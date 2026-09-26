@@ -127,8 +127,10 @@ const api = {
    */
   sources: {
     tabLinks: (songId: number) => invoke('sources:tabLinks', songId),
-    openTabBrowser: (songId: number, site: 'ultimate' | 'cifraclub') =>
-      invoke('sources:openTabBrowser', songId, site),
+    openTabBrowser: (songId: number, site: 'ultimate' | 'cifraclub', mode: 'auto' | 'manual') =>
+      invoke('sources:openTabBrowser', songId, site, mode),
+    useGuitarPro: (songId: number, assetId: number) =>
+      invoke('sources:useGuitarPro', songId, assetId),
     pickTabFile: (songId: number) => invoke('sources:pickTabFile', songId),
     archiveSearch: (songId: number) => invoke('sources:archiveSearch', songId),
     archiveDownload: (songId: number, candidate: unknown) =>

@@ -5,10 +5,12 @@ import { getDb, schema } from '../db/client'
 import { config } from '../config'
 import { parseGuitarProFile } from './guitarpro'
 import { classifySection } from './guitarpro'
+import { readableGuitarProPath } from './legacygp'
 import { matchSong, cleanTitle, type MatchCandidate } from './matcher'
 import { probeAudio, measureLoudness, generateWaveformPeaks, ffmpegAvailable } from '../media/ffmpeg'
 import { PRACTICE_INSTRUMENT } from '@shared/types'
 import type { ImportReport, Instrument } from '@shared/types'
+import type { GpSource } from '@shared/gpversions'
 
 const GP_EXT = new Set(['.gp3', '.gp4', '.gp5', '.gpx', '.gp', '.gp7', '.gtp'])
 const AUDIO_EXT = new Set(['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wma'])
@@ -137,12 +139,16 @@ function ensureProgressRows(songId: number, instruments: Instrument[]): void {
  * chance to file it under a different one.
  */
 async function ingestGuitarProFile(
-  file: string,
+  original: string,
   report: ImportReport,
-  forcedSongId: number | null = null
+  forcedSongId: number | null = null,
+  options: AttachGuitarProOptions = {}
 ): Promise<void> {
   const db = getDb()
+  let file = original
   try {
+    // a Guitar Pro 1/2 file is read through its converted copy; see legacygp.ts
+    file = readableGuitarProPath(original)
     const already = db
       .select()
       .from(schema.mediaAssets)
@@ -271,7 +277,8 @@ async function ingestGuitarProFile(
       }
     }
 
-    db.insert(schema.mediaAssets)
+    const asset = db
+      .insert(schema.mediaAssets)
       .values({
         songId,
         kind: 'guitarpro',
@@ -282,10 +289,13 @@ async function ingestGuitarProFile(
           tracks: parsed.tracks,
           sections: parsed.sections.length,
           hasLyrics: Boolean(parsed.lyrics),
-          chordCount: parsed.chordSymbols.length
+          chordCount: parsed.chordSymbols.length,
+          ...(options.source ? { source: options.source } : {})
         })
       })
-      .run()
+      .returning({ id: schema.mediaAssets.id })
+      .get()
+    if (options.activate) activateGuitarPro(songId, asset.id)
 
     /*
      * One progress row, for the guitar. The file usually carries bass, drums and
@@ -319,15 +329,77 @@ export async function importGuitarProDir(dir = config.paths.gptabs): Promise<Imp
   return report
 }
 
+export interface AttachGuitarProOptions {
+  /** Where the file came from, shown next to it in the list of versions. */
+  source?: GpSource
+  /** Make it the version the app loads. */
+  activate?: boolean
+}
+
 /**
  * Import a tablature that was just downloaded into gptabs/ and hang it on the
  * song the user was looking at.
  */
-export async function attachGuitarProFile(songId: number, file: string): Promise<ImportReport> {
+export async function attachGuitarProFile(
+  songId: number,
+  file: string,
+  options: AttachGuitarProOptions = {}
+): Promise<ImportReport> {
   const report = emptyReport()
   report.scanned = 1
-  await ingestGuitarProFile(file, report, songId)
+  await ingestGuitarProFile(file, report, songId, options)
   return report
+}
+
+/**
+ * The version of this song that came from the same place, if it is already
+ * here — so fetching "Principal" twice activates the copy the song has instead
+ * of filing a "(2)" beside it.
+ */
+export function findGuitarProVersion(songId: number, sourceId: string): number | null {
+  const rows = getDb()
+    .select()
+    .from(schema.mediaAssets)
+    .where(and(eq(schema.mediaAssets.songId, songId), eq(schema.mediaAssets.kind, 'guitarpro')))
+    .all()
+  for (const row of rows) {
+    if (!row.metaJson || !existsSync(row.path)) continue
+    const meta = JSON.parse(row.metaJson) as { source?: GpSource }
+    if (meta.source?.id === sourceId) return row.id
+  }
+  return null
+}
+
+/**
+ * Make one of a song's Guitar Pro files the one the app loads.
+ *
+ * Only the flag moves. The song's sections stay as they are even though they
+ * came from whichever file was imported first: progress and the practice
+ * queue hang off each section and cascade with it, so re-deriving them from
+ * the new file would wipe the user's history to fix a bar offset.
+ */
+export function activateGuitarPro(songId: number, assetId: number): boolean {
+  const db = getDb()
+  const versions = db
+    .select()
+    .from(schema.mediaAssets)
+    .where(and(eq(schema.mediaAssets.songId, songId), eq(schema.mediaAssets.kind, 'guitarpro')))
+    .all()
+  const chosen = versions.find((v) => v.id === assetId)
+  if (!chosen) return false
+
+  for (const v of versions) {
+    const meta = v.metaJson ? (JSON.parse(v.metaJson) as Record<string, unknown>) : {}
+    const active = v.id === assetId
+    if (Boolean(meta.active) === active) continue
+    meta.active = active
+    db.update(schema.mediaAssets)
+      .set({ metaJson: JSON.stringify(meta) })
+      .where(eq(schema.mediaAssets.id, v.id))
+      .run()
+  }
+
+  return true
 }
 
 /* ----------------------------------------------------------------- audio */

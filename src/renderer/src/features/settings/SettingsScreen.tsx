@@ -37,6 +37,14 @@ const FIELDS: Record<string, { label: string; hint?: string; placeholder?: strin
     label: 'Chave da API',
     hint: 'console.cloud.google.com → ative a "YouTube Data API v3" → criar credencial. A cota grátis dá ~100 músicas por dia.'
   },
+  ugUsername: {
+    label: 'Usuário ou e-mail',
+    hint: 'Opcional. A janela de download já guarda o login feito nela; isto só entra quando essa sessão expira.'
+  },
+  ugPassword: {
+    label: 'Senha',
+    hint: 'Guardada cifrada pelo sistema. Quem entra no Ultimate Guitar pelo Google não tem senha para pôr aqui: faça o login uma vez na própria janela.'
+  },
   geminiApiKey: { label: 'Gemini — chave', hint: 'aistudio.google.com/apikey' },
   geminiModel: { label: 'Gemini — modelo' },
   openaiApiKey: { label: 'OpenAI — chave', hint: 'platform.openai.com/api-keys' },
@@ -476,6 +484,11 @@ export function SettingsScreen(): ReactNode {
 
         <Group title="YouTube" subtitle="Busca de aulas, backing tracks e playthroughs">
           {field('youtubeApiKey')}
+        </Group>
+
+        <Group title="Ultimate Guitar" subtitle="Login para baixar tablaturas Guitar Pro sozinho">
+          {field('ugUsername')}
+          {field('ugPassword')}
         </Group>
 
         <Group title="Laboratório de áudio" subtitle="Separação de stems e análise automática">

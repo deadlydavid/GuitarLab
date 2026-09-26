@@ -27,7 +27,8 @@ import {
   importGuitarProDir,
   importAudioDir,
   attachAudioFile,
-  attachGuitarProFile
+  attachGuitarProFile,
+  activateGuitarPro
 } from '../importers/library'
 import { parseGuitarProFile } from '../importers/guitarpro'
 import { importPlaylist } from '../importers/playlist'
@@ -80,6 +81,7 @@ import type {
   TonePlanView
 } from '@shared/types'
 import { RIG_DEFAULT } from '@shared/types'
+import { activeGuitarPro } from '@shared/gpversions'
 
 type Handler = (...args: never[]) => unknown
 
@@ -524,16 +526,44 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   /**
    * Open a tab site with its downloads pointed at gptabs/.
    *
-   * The app cannot fetch the file itself — no API, and scraping is against
-   * those sites' terms — but it can make the click land in the right folder and
-   * import what arrives.
+   * The app never fetches the file from its own process — neither site has an
+   * API — but the window it opens is a real browser. In `auto` mode a pilot
+   * does the clicking: CifraClub's "Principal" file, or Ultimate Guitar's
+   * most-voted tab. In `manual` mode the user browses; either way whatever
+   * comes down lands on the song as the version in use, and the window closes.
    */
-  handle('sources:openTabBrowser', async (songId: number, site: 'ultimate' | 'cifraclub') => {
-    const song = repo.getSong(songId)
-    if (!song) return { error: 'Música não encontrada' }
-    const links = await sources.tabLinks(song.artist, song.title)
-    openTabBrowser(site === 'cifraclub' ? links.cifraClub : links.ultimateGuitar, songId, getWindow())
-    return { ok: true, url: site === 'cifraclub' ? links.cifraClub : links.ultimateGuitar }
+  handle(
+    'sources:openTabBrowser',
+    async (rawSongId: unknown, rawSite: unknown, rawMode: unknown = 'auto') => {
+      const songId = asId(rawSongId, 'songId')
+      const site = asEnum(rawSite, 'site', ['ultimate', 'cifraclub'] as const)
+      const mode = asEnum(rawMode, 'mode', ['auto', 'manual'] as const)
+      const song = repo.getSong(songId)
+      if (!song) return { error: 'Música não encontrada' }
+      const auto = mode === 'auto' ? { site, artist: song.artist, title: song.title } : undefined
+
+      if (site === 'ultimate') {
+        const url = sources.ultimateGuitarUrl(song.artist, song.title)
+        await openTabBrowser(url, songId, getWindow(), auto)
+        return { ok: true, url }
+      }
+      // the Guitar Pro page when the song could be resolved; otherwise the
+      // search, where the pilot reports it found nothing and the user takes over
+      const links = await sources.tabLinks(song.artist, song.title)
+      const url = links.cifraClubResolved
+        ? sources.cifraClubGuitarProUrl(links.cifraClub)
+        : links.cifraClub
+      await openTabBrowser(url, songId, getWindow(), auto)
+      return { ok: true, url }
+    }
+  )
+
+  /** Pick which of a song's Guitar Pro files the app loads. */
+  handle('sources:useGuitarPro', (rawSongId: unknown, rawAssetId: unknown) => {
+    const songId = asId(rawSongId, 'songId')
+    const assetId = asId(rawAssetId, 'assetId')
+    if (!activateGuitarPro(songId, assetId)) return { error: 'Versão não encontrada' }
+    return { ok: true }
   })
 
   /**
@@ -563,7 +593,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const target = insideLibrary ? source : sources.uniquePath(config.paths.gptabs, basename(source))
     if (!insideLibrary) copyFileSync(source, target)
 
-    const report = await attachGuitarProFile(songId, target)
+    const report = await attachGuitarProFile(songId, target, {
+      source: { site: 'arquivo', label: basename(target).replace(/\.[^.]+$/, '') },
+      activate: true
+    })
     const failed = report.errors[0]
     if (failed) return { error: failed.message }
     return { path: target, report }
@@ -772,7 +805,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const sections = repo.listSections(songId)
     const section = sectionId ? sections.find((s) => s.id === sectionId) : null
     const media = repo.listMedia(songId)
-    const gp = media.find((m) => m.kind === 'guitarpro')
+    const gp = activeGuitarPro(media)
 
     const context = [
       `Música: ${song.title}${song.artist ? ` — ${song.artist}` : ''}`,
@@ -834,7 +867,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     if (!song) return { error: 'Música não encontrada' }
 
     const media = repo.listMedia(songId)
-    const gp = media.find((m) => m.kind === 'guitarpro')
+    const gp = activeGuitarPro(media)
     const rawBars = gp?.meta?.barCount
     const barCount = typeof rawBars === 'number' && rawBars > 0 ? rawBars : null
 

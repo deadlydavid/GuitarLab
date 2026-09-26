@@ -158,6 +158,7 @@ contextBridge.exposeInMainWorld('api', {
   sources: {
     tabLinks: none,
     openTabBrowser: none,
+    useGuitarPro: none,
     pickTabFile: none,
     archiveSearch: async () => ({ candidates: [] }),
     archiveDownload: none,

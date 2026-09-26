@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { NeuButton, NeuCard, Badge, Spinner, EmptyState, cx } from '../../components/ui'
-import { IconDownload, IconWave, IconChart, IconCheck, IconImport } from '../../components/ui/icons'
+import { IconDownload, IconWave, IconCheck, IconImport } from '../../components/ui/icons'
 import { Modal } from './SetlistDialogs'
 import { api, isError, formatDuration } from '../../lib/api'
-import type { ArchiveCandidate, DownloadProgress, SongView } from '@shared/types'
+import type { ArchiveCandidate, DownloadProgress, MediaAssetView, SongView } from '@shared/types'
+import { activeGuitarPro, gpSource, guitarProVersions, type GpSource } from '@shared/gpversions'
 
 /**
  * Where a song's files come from.
  *
  * The two halves work differently on purpose, and the dialog says so:
  *
- *  - **Tablatura.** Ultimate Guitar and CifraClub have no public API and their
- *    terms forbid scraping, so the app opens the site's own search — Guitar Pro
- *    files, 4–5 stars — in a window whose downloads land straight in `gptabs/`
- *    and get imported. The click is the user's; the filing is the app's.
+ *  - **Tablatura.** Ultimate Guitar and CifraClub have no public API, so the
+ *    app opens the site in a window whose downloads land straight in
+ *    `gptabs/`, get imported as the version in use, and close the window. A
+ *    pilot does the clicking — CifraClub's "Principal" file, Ultimate Guitar's
+ *    most-voted tab — or the user browses and picks another version. The song
+ *    keeps every version it was given; the list in the card picks the one used.
  *  - **Áudio.** archive.org has a real API, so that side is fully automatic.
  */
 
@@ -30,7 +33,9 @@ function ProgressBar({ progress }: { progress: DownloadProgress }): ReactNode {
       : null
 
   const label =
-    progress.status === 'importing'
+    progress.status === 'searching'
+      ? (progress.message ?? 'procurando…')
+      : progress.status === 'importing'
       ? 'importando (loudness + forma de onda)…'
       : progress.status === 'done'
         ? (progress.message ?? 'pronto')
@@ -52,7 +57,9 @@ function ProgressBar({ progress }: { progress: DownloadProgress }): ReactNode {
             width:
               progress.status === 'done' || progress.status === 'error'
                 ? '100%'
-                : `${pct ?? 12}%`
+                : progress.status === 'searching'
+                  ? '6%'
+                  : `${pct ?? 12}%`
           }}
         />
       </div>
@@ -70,6 +77,76 @@ function ProgressBar({ progress }: { progress: DownloadProgress }): ReactNode {
 
 /* --------------------------------------------------------------- tablature */
 
+type Site = 'ultimate' | 'cifraclub'
+
+const SITE_NAMES: Record<string, string> = {
+  cifraclub: 'CifraClub',
+  ultimate: 'Ultimate Guitar',
+  arquivo: 'arquivo'
+}
+
+/** "29.565 downloads", "88 votos", or nothing for a file from disk. */
+function versionStats(source: GpSource | null): string | null {
+  if (!source) return null
+  if (source.downloads) return `${source.downloads.toLocaleString('pt-BR')} downloads`
+  if (source.votes) return `${source.votes} votos`
+  return null
+}
+
+/**
+ * Every Guitar Pro file the song has, and which one the app loads.
+ *
+ * A download from the tab window becomes the version in use on arrival — it is
+ * what the user just went to fetch — and this list is where they switch back.
+ */
+function GuitarProVersions({
+  versions,
+  onUse,
+  busyId
+}: {
+  versions: MediaAssetView[]
+  onUse: (asset: MediaAssetView) => void
+  busyId: number | null
+}): ReactNode {
+  const active = activeGuitarPro(versions)
+  return (
+    <div className="mt-3">
+      <div className="micro-label mb-1.5">Versões na música</div>
+      <div className="space-y-1.5">
+        {versions.map((v) => {
+          const source = gpSource(v)
+          const file = v.path.split(/[\\/]/).pop() ?? v.path
+          const stats = versionStats(source)
+          return (
+            <div key={v.id} className="neu-inset flex items-center gap-3 rounded-[14px] p-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold">{source?.label || file}</div>
+                <div className="text-txt-micro truncate text-[11px]" title={v.path}>
+                  {source ? (SITE_NAMES[source.site] ?? source.site) : 'importada da pasta'}
+                  {stats ? ` · ${stats}` : ''} · {file}
+                </div>
+              </div>
+              {v.id === active?.id ? (
+                <Badge tone="ok">
+                  <IconCheck width={11} height={11} /> em uso
+                </Badge>
+              ) : (
+                <NeuButton
+                  className="!px-3 !py-1.5 !text-[11px]"
+                  disabled={busyId !== null}
+                  onClick={() => onUse(v)}
+                >
+                  {busyId === v.id ? <Spinner size={12} /> : 'usar esta'}
+                </NeuButton>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function TabSources({
   song,
   progress,
@@ -79,15 +156,34 @@ function TabSources({
   progress: DownloadProgress | null
   onChanged: () => void
 }): ReactNode {
-  const [busy, setBusy] = useState<'ultimate' | 'cifraclub' | 'arquivo' | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
+  const [versions, setVersions] = useState<MediaAssetView[]>([])
+  const [switching, setSwitching] = useState<number | null>(null)
 
-  const open = async (site: 'ultimate' | 'cifraclub'): Promise<void> => {
-    setBusy(site)
+  const loadVersions = useCallback(async () => {
+    try {
+      setVersions(guitarProVersions(await api.songs.media(song.id)))
+    } catch {
+      // the list is a convenience; the buttons still work without it
+    }
+  }, [song.id])
+
+  useEffect(() => {
+    void loadVersions()
+  }, [loadVersions])
+
+  // a download that finished added (or re-activated) a version
+  useEffect(() => {
+    if (progress?.kind === 'guitarpro' && progress.status === 'done') void loadVersions()
+  }, [progress, loadVersions])
+
+  const open = async (site: Site, mode: 'auto' | 'manual'): Promise<void> => {
+    setBusy(`${site}:${mode}`)
     setError(null)
     try {
-      const res = await api.sources.openTabBrowser(song.id, site)
+      const res = await api.sources.openTabBrowser(song.id, site, mode)
       if (isError(res)) setError(res.error)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao abrir o site')
@@ -105,6 +201,7 @@ function TabSources({
       if (isError(res)) setError(res.error)
       else if ('path' in res) {
         setPicked(res.path.split(/[\\/]/).pop() ?? res.path)
+        void loadVersions()
         onChanged()
       }
     } catch (err) {
@@ -113,6 +210,26 @@ function TabSources({
       setBusy(null)
     }
   }
+
+  const use = async (asset: MediaAssetView): Promise<void> => {
+    setSwitching(asset.id)
+    setError(null)
+    try {
+      const res = await api.sources.useGuitarPro(song.id, asset.id)
+      if (isError(res)) setError(res.error)
+      else {
+        await loadVersions()
+        onChanged()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao trocar a versão')
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  const spin = (key: string, icon: ReactNode): ReactNode =>
+    busy === key ? <Spinner size={14} /> : icon
 
   return (
     <NeuCard className="p-4">
@@ -126,43 +243,69 @@ function TabSources({
       </div>
 
       <p className="text-txt-dim text-[12px] leading-relaxed">
-        Abre a busca já filtrada em <b>arquivos Guitar Pro com 4–5 estrelas</b>. O download que
-        você clicar cai direto em <code className="text-txt">gptabs/</code> e entra na biblioteca
-        sozinho — não precisa mover nada.
+        O app abre o site, baixa sozinho e fecha a janela: no <b>CifraClub</b> a versão{' '}
+        <b>Principal</b> (sem login), no <b>Ultimate Guitar</b> a tab com mais votos (precisa estar
+        logado). O arquivo cai em <code className="text-txt">gptabs/</code> e vira a versão em uso.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <NeuButton variant="accent" onClick={() => open('ultimate')} disabled={busy !== null}>
+        <NeuButton
+          variant="accent"
+          onClick={() => open('cifraclub', 'auto')}
+          disabled={busy !== null}
+        >
           <span className="flex items-center gap-2">
-            {busy === 'ultimate' ? <Spinner size={14} /> : <IconDownload width={15} height={15} />}
-            Ultimate Guitar
+            {spin('cifraclub:auto', <IconDownload width={15} height={15} />)}
+            CifraClub
           </span>
         </NeuButton>
-        <NeuButton onClick={() => open('cifraclub')} disabled={busy !== null}>
+        <NeuButton onClick={() => open('ultimate', 'auto')} disabled={busy !== null}>
           <span className="flex items-center gap-2">
-            {busy === 'cifraclub' ? <Spinner size={14} /> : <IconChart width={15} height={15} />}
-            CifraClub
+            {spin('ultimate:auto', <IconDownload width={15} height={15} />)}
+            Ultimate Guitar
           </span>
         </NeuButton>
         <NeuButton onClick={pickFile} disabled={busy !== null} title="Escolher um .gp já baixado">
           <span className="flex items-center gap-2">
-            {busy === 'arquivo' ? <Spinner size={14} /> : <IconImport width={15} height={15} />}
+            {spin('arquivo', <IconImport width={15} height={15} />)}
             Já tenho o arquivo
           </span>
         </NeuButton>
       </div>
 
+      <div className="text-txt-micro mt-2.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px]">
+        <span>Quer outra versão? Escolha você mesmo no</span>
+        <button
+          className="hover:text-accent-2 underline disabled:opacity-50"
+          disabled={busy !== null}
+          onClick={() => open('cifraclub', 'manual')}
+        >
+          CifraClub
+        </button>
+        <span>ou no</span>
+        <button
+          className="hover:text-accent-2 underline disabled:opacity-50"
+          disabled={busy !== null}
+          onClick={() => open('ultimate', 'manual')}
+        >
+          Ultimate Guitar
+        </button>
+        <span>— o que você baixar entra como mais uma versão.</span>
+      </div>
+
       {picked && <div className="text-ok mt-2 text-[11px]">{picked} entrou na biblioteca</div>}
-
-      <p className="text-txt-micro mt-2.5 text-[11px] leading-snug">
-        Os dois sites não têm API pública e raspar o conteúdo fere os termos deles, então quem
-        escolhe e clica é você — o app só decide onde o arquivo cai e importa o que chegar. Parte
-        dos arquivos Guitar Pro do Ultimate Guitar exige conta Pro; a janela guarda o login entre
-        as sessões, e o botão ao lado serve para qualquer .gp que você já tenha em mãos.
-      </p>
-
       {error && <div className="text-danger mt-2 text-[11px]">{error}</div>}
       {progress?.kind === 'guitarpro' && <ProgressBar progress={progress} />}
+
+      {versions.length > 0 && (
+        <GuitarProVersions versions={versions} onUse={use} busyId={switching} />
+      )}
+
+      <p className="text-txt-micro mt-2.5 text-[11px] leading-snug">
+        No Ultimate Guitar a janela guarda o login entre as sessões, e dá para salvar usuário e
+        senha em Ajustes para quando ele expirar. Se nenhuma versão servir, a janela fica aberta
+        para você escolher.
+      </p>
     </NeuCard>
   )
 }

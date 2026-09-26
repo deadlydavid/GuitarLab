@@ -100,6 +100,15 @@ export const config = {
     searchCost: 100
   },
 
+  ultimateGuitar: {
+    get username(): string {
+      return settingValue('ugUsername')
+    },
+    get password(): string {
+      return settingValue('ugPassword')
+    }
+  },
+
   llm: {
     get provider(): string {
       return settingValue('llmProvider')

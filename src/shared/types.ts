@@ -547,7 +547,8 @@ export interface DownloadProgress {
   fileName: string
   receivedBytes: number
   totalBytes: number | null
-  status: 'downloading' | 'importing' | 'done' | 'error'
+  /** `searching` is the Ultimate Guitar pilot at work: no file yet, only `message`. */
+  status: 'searching' | 'downloading' | 'importing' | 'done' | 'error'
   message?: string
 }
 
@@ -581,7 +582,7 @@ export interface ChordMapView {
 /** Where a resolved setting came from, shown next to each field. */
 export type SettingSource = 'env' | 'user' | 'dotenv' | 'default'
 
-export type SettingGroup = 'spotify' | 'youtube' | 'llm' | 'lab' | 'media' | 'app'
+export type SettingGroup = 'spotify' | 'youtube' | 'tabs' | 'llm' | 'lab' | 'media' | 'app'
 
 /**
  * One setting, as the renderer sees it.

@@ -206,8 +206,10 @@ export interface Api {
     tabLinks: (songId: number) => Promise<TabSourceLinks | { error: string }>
     openTabBrowser: (
       songId: number,
-      site: 'ultimate' | 'cifraclub'
+      site: 'ultimate' | 'cifraclub',
+      mode: 'auto' | 'manual'
     ) => Promise<{ ok: boolean; url: string } | { error: string }>
+    useGuitarPro: (songId: number, assetId: number) => Promise<{ ok: true } | { error: string }>
     pickTabFile: (
       songId: number
     ) => Promise<

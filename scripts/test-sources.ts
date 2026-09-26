@@ -19,8 +19,14 @@ import {
   uniquePath,
   parseArchiveLength,
   scoreArchiveFile,
-  searchArchiveAudio
+  searchArchiveAudio,
+  rankUltimateGuitarResults,
+  rankCifraClubVersions,
+  cifraClubGuitarProUrl,
+  type UgSearchResult
 } from '../src/main/services/sources'
+import { activeGuitarPro, gpSource, guitarProVersions } from '../src/shared/gpversions'
+import type { MediaAssetView } from '../src/shared/types'
 import { cleanTitle, normalizeTitle, normalizeArtist } from '../src/main/importers/matcher'
 
 let failures = 0
@@ -138,6 +144,106 @@ check('derivado do proprio archive nao entra', derived === null)
 check('sem perda ganha do mp3', (wav?.score ?? 0) > (mp3?.score ?? 0), `${wav?.score} > ${mp3?.score}`)
 check('url de download e montada', wav?.url === 'https://archive.org/download/kill-em-all/02%20The%20Four%20Horsemen.wav', wav?.url)
 check('duracao vem do metadado', wav?.durationS === 433.2)
+
+console.log('\n=== 3b. qual tab do Ultimate Guitar o piloto abre ===')
+{
+  // the shape the search page really returned for "Audioslave Like a Stone"
+  const tab = (id: number, over: Partial<UgSearchResult>): UgSearchResult => ({
+    id,
+    type: 'Pro',
+    part: '',
+    version: 1,
+    votes: 0,
+    rating: 4,
+    song_name: 'Like A Stone',
+    artist_name: 'Audioslave',
+    tab_url: `https://tabs.ultimate-guitar.com/tab/audioslave/like-a-stone-guitar-pro-${id}`,
+    ...over
+  })
+  const results: UgSearchResult[] = [
+    // the official row and the marketing duplicate link to the paid player
+    { type: undefined, song_name: 'Like A Stone', artist_name: 'Audioslave', tab_url: 'https://tabs.ultimate-guitar.com/tab/audioslave/like-a-stone-official-2076695' },
+    { type: undefined, song_name: 'Like A Stone', artist_name: 'Chris Cornell', votes: 88, tab_url: 'https://www.ultimate-guitar.com/pro/?tab_id=2825573' },
+    tab(214515, { version: 5, votes: 30, rating: 4.44 }),
+    tab(214511, { votes: 19, rating: 4.43 }),
+    tab(852843, { version: 7, votes: 8, rating: 4.4 }),
+    tab(445524, { part: 'solo', votes: 90, rating: 4.9 }),
+    tab(214512, { version: 2, votes: 6 }),
+    tab(214515, { version: 5, votes: 30, rating: 4.44 }),
+    tab(2825573, { artist_name: 'Chris Cornell', votes: 88, tab_url: 'https://tabs.ultimate-guitar.com/tab/chris-cornell/like-a-stone-guitar-pro-2825573' }),
+    tab(218709, { song_name: 'Like A Rolling Stone', artist_name: 'Bob Dylan', votes: 32, tab_url: 'https://tabs.ultimate-guitar.com/tab/bob-dylan/like-a-rolling-stone-guitar-pro-218709' }),
+    tab(221172, { song_name: 'Like A Rolling Stone', artist_name: 'Jimi Hendrix', votes: 52, tab_url: 'https://tabs.ultimate-guitar.com/tab/jimi-hendrix/like-a-rolling-stone-guitar-pro-221172' })
+  ]
+  const ranked = rankUltimateGuitarResults(results, 'Audioslave', 'Like A Stone - Remastered')
+  const ids = ranked.map((c) => Number(c.url.split('-').pop()))
+  console.log(`   ${ids.join(', ')}`)
+  check('a com mais votos vem primeiro', ids[0] === 214515)
+  check('depois por votos', ids.slice(0, 4).join() === '214515,214511,852843,214512', ids.join())
+  check('parte da musica (solo) vai para o fim mesmo com mais votos', ids[ids.length - 1] === 445524)
+  check('outro artista fica de fora', !ids.includes(2825573))
+  check('outra musica parecida fica de fora', !ids.includes(218709) && !ids.includes(221172))
+  check('linha oficial e de marketing ficam de fora', ranked.every((c) => c.url.includes('guitar-pro-')))
+  check('url repetida entra uma vez so', ids.filter((i) => i === 214515).length === 1)
+  check('sem artista, casa so pelo titulo', rankUltimateGuitarResults(results, null, 'Like A Stone')[0]?.votes === 88)
+  check('empate em votos desempata pela nota', rankUltimateGuitarResults([tab(1, { votes: 5, rating: 4.1 }), tab(2, { votes: 5, rating: 4.8 })], 'Audioslave', 'Like A Stone')[0]?.url.endsWith('-2') === true)
+  check('nada casa, lista vazia', rankUltimateGuitarResults(results, 'Metallica', 'One').length === 0)
+}
+
+console.log('\n=== 3c. qual arquivo do CifraClub o piloto baixa ===')
+{
+  check(
+    'pagina de Guitar Pro fica ao lado da cifra',
+    cifraClubGuitarProUrl('https://www.cifraclub.com.br/legiao-urbana/tempo-perdido/') ===
+      'https://www.cifraclub.com.br/legiao-urbana/tempo-perdido/guitarpro.html'
+  )
+  check(
+    'sem barra no fim tambem',
+    cifraClubGuitarProUrl('https://www.cifraclub.com.br/legiao-urbana/tempo-perdido') ===
+      'https://www.cifraclub.com.br/legiao-urbana/tempo-perdido/guitarpro.html'
+  )
+  // what the Tempo Perdido page really listed
+  const file = (c: number): string =>
+    `https://www.cifraclub.com.br/ajax/gp_partitura_download.php?c=${c}&a=19&m=3219&t=6&arq=x.gp5`
+  const ranked = rankCifraClubVersions([
+    { label: 'Ao-vivo', downloads: 2556, url: file(54167) },
+    { label: 'Versão 4', downloads: 20443, url: file(1057) },
+    { label: 'Principal', downloads: 29565, url: file(47702) },
+    { label: 'Versão 5', downloads: 3607, url: file(45902) },
+    { label: 'Versão 4', downloads: 20443, url: file(1057) }
+  ])
+  console.log(`   ${ranked.map((v) => v.label).join(', ')}`)
+  check('Principal primeiro', ranked[0]?.label === 'Principal')
+  check('depois por downloads', ranked.map((v) => v.label).join() === 'Principal,Versão 4,Versão 5,Ao-vivo')
+  check('link repetido entra uma vez so', ranked.length === 4)
+  const noPrincipal = rankCifraClubVersions([
+    { label: 'Versão 2', downloads: 10, url: file(1) },
+    { label: 'Versão 3', downloads: 900, url: file(2) }
+  ])
+  check('sem Principal, a mais baixada', noPrincipal[0]?.label === 'Versão 3')
+}
+
+console.log('\n=== 3d. qual versao do Guitar Pro o app carrega ===')
+{
+  const gp = (id: number, meta: Record<string, unknown> | null): MediaAssetView => ({
+    id,
+    songId: 1,
+    kind: 'guitarpro',
+    path: `C:/gptabs/${id}.gp5`,
+    bytes: 100,
+    meta
+  })
+  const audio: MediaAssetView = { id: 1, songId: 1, kind: 'audio_master', path: 'a.wav', bytes: 1, meta: null }
+  check('sem marca, a primeira importada', activeGuitarPro([gp(9, null), gp(4, null), audio])?.id === 4)
+  check('a marcada ganha', activeGuitarPro([gp(4, null), gp(9, { active: true })])?.id === 9)
+  check('marca falsa nao conta', activeGuitarPro([gp(4, { active: false }), gp(9, null)])?.id === 4)
+  check('sem Guitar Pro, nada', activeGuitarPro([audio]) === undefined)
+  check('lista so Guitar Pro, em ordem', guitarProVersions([gp(9, null), audio, gp(4, null)]).map((v) => v.id).join() === '4,9')
+  check(
+    'origem lida do meta',
+    gpSource(gp(5, { source: { site: 'cifraclub', label: 'Principal', downloads: 29565 } }))?.label === 'Principal'
+  )
+  check('origem malformada vira null', gpSource(gp(5, { source: 'x' })) === null)
+}
 
 console.log('\n=== 4. busca real no archive.org ===')
 try {

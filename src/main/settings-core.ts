@@ -5,7 +5,7 @@
  * in this file may import `electron`, `node:fs`, or anything with a side effect.
  */
 
-export type SettingGroup = 'spotify' | 'youtube' | 'llm' | 'lab' | 'media' | 'app'
+export type SettingGroup = 'spotify' | 'youtube' | 'tabs' | 'llm' | 'lab' | 'media' | 'app'
 
 /**
  * Where a resolved value came from. The UI shows this, because "I pasted the
@@ -66,6 +66,15 @@ export const SETTING_SPECS: readonly SettingSpec[] = [
     fallback: '10000',
     group: 'youtube'
   },
+
+  /*
+   * The Ultimate Guitar account the download window logs into when its saved
+   * session has expired. Optional: a login made by hand in that window is kept
+   * between sessions anyway, and an account that signs in through Google has
+   * no password to put here.
+   */
+  { key: 'ugUsername', envKeys: ['UG_USERNAME'], secret: false, fallback: '', group: 'tabs' },
+  { key: 'ugPassword', envKeys: ['UG_PASSWORD'], secret: true, fallback: '', group: 'tabs' },
 
   {
     key: 'llmProvider',

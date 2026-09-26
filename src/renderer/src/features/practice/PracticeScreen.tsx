@@ -34,6 +34,7 @@ import { useNav } from '../../App'
 import type { SongView, SectionView, Instrument, MediaAssetView } from '@shared/types'
 import { useStrings } from '../../lib/i18n'
 import { PRACTICE_INSTRUMENT } from '@shared/types'
+import { activeGuitarPro } from '@shared/gpversions'
 
 type Source = 'gp_synth' | 'stems' | 'youtube'
 
@@ -151,7 +152,7 @@ export function PracticeScreen({
     setSections(secs)
     setMedia(mediaList)
 
-    const gp = mediaList.find((m) => m.kind === 'guitarpro')
+    const gp = activeGuitarPro(mediaList)
     if (gp) {
       try {
         setGpData(await api.gp.readFile(gp.path))
