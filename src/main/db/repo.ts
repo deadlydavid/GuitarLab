@@ -901,6 +901,7 @@ export type InsightKind =
   | 'practice_plan'
   | 'technique_breakdown'
   | 'tone_advice'
+  | 'tone_research'
   | 'structure_summary'
   | 'daily_plan'
 

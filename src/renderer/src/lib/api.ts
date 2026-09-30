@@ -21,6 +21,7 @@ import type {
   YoutubeRole,
   RigView,
   TonePlanView,
+  ToneResearchView,
   LlmProgressEvent,
   SpotifyPlaylistView,
   PlaylistImportView,
@@ -37,6 +38,7 @@ export type InsightKind =
   | 'practice_plan'
   | 'technique_breakdown'
   | 'tone_advice'
+  | 'tone_research'
   | 'structure_summary'
   | 'daily_plan'
 
@@ -281,6 +283,8 @@ export interface Api {
     rig: () => Promise<RigView>
     setRig: (rig: RigView) => Promise<RigView>
     patch: (songId: number) => Promise<TonePlanView | null>
+    /** How the record was made, as last researched on the web; null before the first search. */
+    research: (songId: number) => Promise<ToneResearchView | null>
   }
   /**
    * The AI answers already stored for a song.
@@ -316,7 +320,10 @@ export interface Api {
     ) => Promise<{ content: string; provider: string; model: string } | { error: string }>
     /** Asks for the song's structure and rewrites its sections with the answer. */
     sections: (songId: number) => Promise<{ sections: SectionView[] } | { error: string }>
-    tonePatch: (songId: number) => Promise<TonePlanView | { error: string }>
+    /** `wishes` is the player's own request for this song, passed to the model as a rule. */
+    tonePatch: (songId: number, wishes?: string) => Promise<TonePlanView | { error: string }>
+    /** Searches the web for how the record was made, replacing the stored answer. */
+    toneResearch: (songId: number) => Promise<ToneResearchView | { error: string }>
     classifyVideos: (videos: unknown[]) => Promise<{
       assignments: Array<{ index: number; role: string; confidence: number }>
     }>
@@ -341,6 +348,14 @@ export interface Api {
     openExternal: (url: string) => Promise<void>
     showItem: (path: string) => Promise<void>
     pickFolder: () => Promise<string | null>
+  }
+  /** .tsl files for the GT-1: backups of overwritten slots, and exports for BOSS TONE STUDIO. */
+  gt1: {
+    /** Saves under userData/gt1-backups and returns the full path. */
+    saveBackup: (fileName: string, content: string) => Promise<string>
+    /** Asks where to save; null when the player cancels. */
+    exportTsl: (fileName: string, content: string) => Promise<string | null>
+    openBackups: () => Promise<string>
   }
   mediaUrl: (path: string) => string
 }

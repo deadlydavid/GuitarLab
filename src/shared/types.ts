@@ -370,13 +370,29 @@ export const RIG_OUTPUT_EN: Record<RigView['output'], string> = {
   amp: 'amplifier'
 }
 
-/** One knob on a pedal block. `value` is 0–100 so it can be drawn as a knob. */
+/**
+ * One knob on a pedal block.
+ *
+ * `value` is 0–100 unless `min`/`max` say otherwise: a patch written against a
+ * known device (the GT-1) carries the device's own ranges — GAIN 0–120, TONE
+ * −50…+50, TIME in ms — so the number on screen is the number to type into the
+ * editor, not a percentage to convert.
+ */
 export interface PatchParam {
   label: string
-  /** Percentage of the knob's travel, or null when the setting is a choice. */
+  /** The setting, in the device's units; null when the setting is a choice. */
   value: number | null
   /** Shown instead of a number for selector-style settings (amp type, mode). */
   text?: string | null
+  /** The device's range for `value`; 0–100 when absent. */
+  min?: number
+  max?: number
+  /** Printed after the number: dB, ms, s, %, st. */
+  unit?: string
+  /** Decimal places to print; 0 when absent. */
+  decimals?: number
+  /** Why this setting could not be checked against the device, when it could not. */
+  warning?: string | null
 }
 
 /** One effect block in the processor's chain. */
@@ -388,6 +404,64 @@ export interface PatchBlock {
   enabled: boolean
   params: PatchParam[]
   note?: string | null
+  warning?: string | null
+}
+
+/**
+ * A GT-1 footswitch or pedal and what it does in this patch: CTL1, the EXP
+ * pedal (EXP1) and its toe switch (EXP SW). Each has a FUNC of its own; ASSIGNs
+ * are listed separately because one press can drive several of them.
+ */
+export interface ControlView {
+  source: string
+  /** FUNC for a switch, FUNCTION for the pedal: OD SOLO, FX2, PDL FX/FV… */
+  func: string
+  mode: string | null
+  /** SOLO LEVEL, when FUNC is OD SOLO or PrA SOLO. */
+  soloLevel: number | null
+  action: string
+  when: string
+  warning?: string | null
+}
+
+/** One of the GT-1's ASSIGN 1–6: a controller moving one parameter between two values. */
+export interface AssignView {
+  number: number
+  source: string
+  mode: string
+  category: string
+  target: string
+  /** TARGET MIN and MAX, printed the way the editor shows them. */
+  min: string
+  max: string
+  purpose: string
+  /** INT PEDAL / WAVE PEDAL settings, when the source is one of them. */
+  extra: string | null
+  warning?: string | null
+}
+
+/** One line of the live cue sheet: at this part, on this patch, do this. */
+export interface CueView {
+  section: string
+  patch: string
+  action: string
+}
+
+/** A page the web search read, for the "how it was recorded" card. */
+export interface WebSource {
+  title: string
+  url: string
+}
+
+/** What the web says about how the record's guitars were tracked. */
+export interface ToneResearchView {
+  content: string
+  sources: WebSource[]
+  /** False when no provider could search and the text is the model's own memory. */
+  grounded: boolean
+  provider: string | null
+  model: string | null
+  createdAt: number
 }
 
 /**
@@ -436,6 +510,10 @@ export interface TonePatchView {
   blocks: PatchBlock[]
   /** What the single assignable footswitch does here, when it is worth using. */
   ctrl: CtrlAssignment | null
+  /** GT-1: CTL1, EXP pedal and EXP SW, each with its FUNC. */
+  controls?: ControlView[]
+  /** GT-1: ASSIGN 1–6, what lets one patch cover several parts of the song. */
+  assigns?: AssignView[]
   /** What to listen for in the original recording to check the match. */
   listenFor: string
   /** Free-text caveats: output-level advice, alternatives, gotchas. */
@@ -451,6 +529,14 @@ export interface TonePlanView {
   patches: TonePatchView[]
   pitchShifter: PitchShifterPlan | null
   rig: RigView
+  /** The device the patches were checked against; absent for a generic answer. */
+  device?: 'gt1' | null
+  /** Live cue sheet for the whole song, in playing order. */
+  cues?: CueView[]
+  /** Whether the web research on the recording went into the prompt. */
+  researchUsed?: boolean
+  /** What the player asked for in this song, kept so the next "gerar de novo" asks again. */
+  wishes?: string
   provider?: string
   model?: string
 }

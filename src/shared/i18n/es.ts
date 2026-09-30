@@ -440,6 +440,194 @@ export const es: Catalog = {
       onPath: 'Encontrado en el sistema'
     }
   },
+  tone: {
+    rigNoteGt1:
+      'Con la GT-1, la sugerencia usa solo lo que su manual permite — se comprueba cada bloque, tipo y rango de valores — y aprovecha CTL1, el pedal EXP y los ASSIGN para tocar la canción entera sin cambiar de patch.',
+    pitchGt1: (semitones: string) =>
+      `En la GT-1 el pitch shifter es un tipo de FX: FX1 = PITCH SHIFTER, PITCH ${semitones}, FINE 0, PRE DELAY 0 ms, FEEDBACK 0, E.LEVEL 100, D.LEVEL 0, y el FX1 primero en la cadena. Queda el FX2 para el efecto de la canción.`,
+    chainOn: (label: string) => `${label}: encendido`,
+    chainStandby: (label: string) => `${label}: apagado en el patch, un control lo enciende`,
+    chainOff: (label: string) => `${label}: apagado`,
+    blockStandby: 'apagado en el patch (un control lo enciende)',
+    controlsTitle: 'Pedales y botones',
+    when: (when: string) => `cuándo: ${when}`,
+    assignTitle: 'ASSIGN — un pisotón mueve varios parámetros',
+    assignPurpose: 'para qué',
+    wishes: 'Lo que quieres en esta canción (opcional)',
+    wishesPlaceholder: 'ej.: armonía una tercera abajo en el solo melódico, wah en el solo, un solo patch',
+    wishesHint: 'Va a la IA como regla y queda guardado con el patch.',
+    cuesTitle: 'Guion en vivo',
+    research: {
+      title: 'Cómo se grabó el disco',
+      sources: (n: number) => `${n} ${plural(n, 'fuente', 'fuentes')} de la web`,
+      noSources: 'sin fuentes: memoria del modelo',
+      again: 'Buscar de nuevo',
+      search: 'Buscar en la web',
+      empty:
+        'La IA busca entrevistas, rig rundowns y créditos de producción para saber qué guitarras, amplis, gabinetes, pedales y micrófonos se usaron en esta grabación. Eso es lo que el patch intenta reproducir; al sugerir el patch la búsqueda se hace sola si todavía no existe.',
+      ready: (n: number) => `Búsqueda lista, con ${n} ${plural(n, 'fuente', 'fuentes')}`,
+      ungrounded: 'Ningún proveedor con búsqueda respondió: el texto es de la memoria del modelo'
+    },
+    setup: {
+      title: 'Antes de armarlo en la GT-1 (una sola vez)',
+      outputAmp:
+        'el tipo de tu ampli (COMBO AMP, STACK AMP o JC-120; *RETURN si entras por el retorno). En este modo el SP TYPE del PREAMP no actúa.',
+      outputLine: 'LINE/PHONES — es lo que activa la simulación de caja (SP TYPE) para PA y auriculares.',
+      pref: 'CTL 1, EXP 1 y EXP SW en PATCH. En SYSTEM la GT-1 ignora los ajustes de esos pedales en el patch y los ASSIGN que los usan.',
+      hold: 'ON, si quieres que el volumen/wah siga donde está el pedal al cambiar entre patches con la misma función.',
+      editor:
+        'arma el patch a partir de uno limpio (INIT) y guárdalo en un slot U01–U99; el orden de la cadena se arrastra en la pantalla del editor.',
+      matchWhere: 'Para comparar el tono',
+      match:
+        'MENU › USB: DIRECT MONITOR ON y EFX OUT 100%, y elige la entrada "GT-1" abajo — o la salida de la GT-1 en la UM2 con la ganancia de la UM2 lo bastante baja para no saturar.'
+    },
+    gt1: {
+      title: 'Llevar a la GT-1',
+      intro:
+        'Graba el patch directo en la pedalera por USB, o exporta un .tsl para importarlo en el BOSS TONE STUDIO. Antes de reemplazar un slot, la app guarda una copia .tsl de lo que había.',
+      export: 'Exportar .tsl',
+      exported: (path: string) => `Liveset guardado en ${path}. En el BOSS TONE STUDIO: LIVESET › importar, y arrastra los patches a los slots U.`,
+      connect: 'Conectar a la GT-1 (USB)',
+      connecting: 'Conectando…',
+      reading: (done: number, total: number) => `Leyendo los nombres de los slots… ${done}/${total}`,
+      connected: 'GT-1 conectada',
+      backups: 'Carpeta de copias',
+      slot: 'slot',
+      chooseSlot: 'elige el slot',
+      listen: 'Escuchar ahora',
+      listenHint: 'Lo carga en el patch temporal: la GT-1 suena al instante, sin grabar nada.',
+      store: (slot: string) => `Grabar en ${slot}`,
+      sending: (pct: number) => `Enviando… ${pct}%`,
+      playing: (name: string) => `"${name}" sonando en la GT-1 (no grabado — cambiar de patch lo descarta).`,
+      confirm: (slot: string, current: string) =>
+        `¿Reemplazar "${current || 'vacío'}" en ${slot}? Antes se guarda una copia .tsl.`,
+      confirmYes: 'Reemplazar',
+      cancel: 'Cancelar',
+      backingUp: 'Guardando copia del slot…',
+      storing: 'Grabando y comprobando…',
+      stored: (slot: string, name: string, backup: string) =>
+        `"${name}" grabado en ${slot} y comprobado byte a byte. Copia del anterior: ${backup}`,
+      skipped: (list: string) => `No cupo en la GT-1 y quedó en el valor por defecto: ${list}`,
+      failed: (detail: string) => `No funcionó: ${detail}`
+    },
+    match: {
+      title: 'Comparar con el original',
+      badge: 'stem × tu GT-1',
+      empty:
+        'Para medir la diferencia entre tu tono y el del disco, separa los stems de esta canción en el Laboratorio con el modelo htdemucs_6s — es el que entrega la guitarra aislada. Con el stem listo, esta área graba lo que sale de la GT-1 y sugiere el GRAPHIC EQ y la MASTER EQ.',
+      distance: (list: string) => `distancia: ${list} dB`,
+      steps:
+        '1) Elige la parte y analiza el original. 2) Conecta la GT-1 al PC — por su USB (entrada "GT-1" con DIRECT MONITOR ON y EFX OUT en 100%) o de la salida de la GT-1 a la entrada de la UM2 — y graba tocando la misma parte, con la misma dinámica. 3) Pasa el GRAPHIC EQ sugerido al BOSS TONE STUDIO y graba de nuevo: la distancia tiene que bajar.',
+      reference: 'referencia',
+      refGuitar: 'Stem de la guitarra',
+      refOther: 'Stem "other"',
+      range: 'parte',
+      wholeSong: 'Canción entera',
+      wholeSongShort: 'canción entera',
+      section: 'parte',
+      from: 'desde',
+      to: 'hasta',
+      end: 'fin',
+      startAria: 'Inicio de la parte (m:ss)',
+      endAria: 'Fin de la parte (m:ss)',
+      analyzing: (pct: number) => `Analizando el stem… ${pct}%`,
+      analyze: 'Analizar el original',
+      analyzeAgain: 'Analizar el original de nuevo',
+      rangeChanged: 'La parte cambió desde el análisis — analiza de nuevo.',
+      pitch: 'tono del stem',
+      pitchDown: 'Bajar un semitono',
+      pitchUp: 'Subir un semitono',
+      pitchReset: 'Volver al tono original',
+      pitchHint:
+        'Para cuando el stem vino en otro tono del que tocas: el análisis y el audio que suena mientras grabas salen transpuestos.',
+      semitones: (value: string) => `${value} st`,
+      pitchChanged: 'El tono cambió desde el análisis — analiza el original de nuevo.',
+      pitchUnavailable:
+        'No se pudo transponer el audio que suena mientras grabas; sale en el tono original (el análisis sigue transpuesto).',
+      takes: 'tomas',
+      take: (n: number) => `Toma ${n}`,
+      newChart: 'Grabando — el gráfico nuevo aparece cuando pares.',
+      used: (range: string, seconds: number) => `${range}: ${seconds} s de guitarra sonando aprovechados`,
+      input: 'entrada (GT-1 USB o UM2)',
+      systemDefault: 'Predeterminado del sistema',
+      inputN: (n: number) => `Entrada ${n}`,
+      playAlong: 'tocar encima mientras graba',
+      alongReference: 'El stem de referencia',
+      alongMix: 'La canción original',
+      alongNone: (seconds: number) => `Nada (graba hasta ${seconds} s)`,
+      stop: (clock: string) => `Parar (${clock})`,
+      record: 'Grabar mi tono',
+      meter: 'Nivel de entrada',
+      clipping: '¡saturando!',
+      weakStem: (db: number) =>
+        `El stem de la guitarra está muy bajo en esta parte (${db} dBFS de media): la separación probablemente puso la guitarra en el stem "other". Comparar con lo que quedó aquí ajustaría el EQ a restos de separación.`,
+      useOther: 'Usar el stem "other"',
+      openFailed: (status: number) => `no pude abrir el audio (HTTP ${status})`,
+      silentStem: 'el stem está en silencio en esta parte — elige otra',
+      noSignal:
+        'No llegó suficiente sonido por la entrada — revisa el dispositivo, el volumen y que la GT-1 tenga DIRECT MONITOR/EFX OUT activados.',
+      clipped:
+        'La entrada saturó en algún momento: baja el OUTPUT LEVEL/EFX OUT de la GT-1 o la ganancia de la interfaz y graba de nuevo.',
+      inputFailed: (detail: string) => `No pude abrir la entrada de audio: ${detail}`,
+      refDone: 'Original analizado.',
+      yoursDone: 'Tu tono grabado.',
+      needYours: 'Falta grabar tu tono para comparar.',
+      needRef: 'Falta analizar el original para comparar.',
+      legendRef: 'original (stem)',
+      legendYou: 'tú (GT-1)',
+      legendPrev: 'tú, toma anterior',
+      legendNote: 'curvas con el volumen igualado; lo que queda es el equilibrio de frecuencias',
+      chartAria: 'Espectro medio del original y de tu tono, por frecuencia',
+      seriesRef: 'original',
+      seriesYou: 'tú',
+      seriesPrev: 'toma anterior',
+      missing: 'te falta',
+      geqTitle: 'GRAPHIC EQ en un FX libre',
+      geqAria: 'Ganancias sugeridas para el GRAPHIC EQ',
+      residual: (after: string, before: string) => `queda tras el EQ: ${after} dB (era ${before})`,
+      boost: 'subir: el disco tiene más',
+      cut: 'cortar: tú tienes más',
+      masterTitle: 'MASTER EQ (sin gastar FX) — aproximado',
+      masterNote: (residual: string) =>
+        `El manual no dice dónde están las esquinas de los shelves LOW/HIGH; la cuenta supone ~120 Hz y ~6 kHz. Quedan ${residual} dB.`,
+      whereFirst: 'Dónde tocar primero',
+      nothingBig:
+        'Ninguna región pasa de 3 dB de diferencia — el equilibrio ya está cerca del disco. De aquí en adelante, compara de oído: ganancia, ataque y ambiente.',
+      recordHas: (db: number, advice: string) => `el disco tiene ${db} dB más — ${advice}.`,
+      youHave: (db: number, advice: string) => `tú tienes ${db} dB más — ${advice}.`,
+      regions: {
+        low: {
+          name: 'Graves (60–150 Hz)',
+          more: 'sube BASS en el PREAMP o BOTTOM en el OD/DS',
+          less: 'baja BASS en el PREAMP o BOTTOM en el OD/DS; un SP TYPE cerrado (4x12") también controla el grave'
+        },
+        lowMid: {
+          name: 'Medios-graves (150–500 Hz)',
+          more: 'sube BASS/MIDDLE o cambia a un SP TYPE más grande',
+          less: 'baja MIDDLE o BASS; es la región que se embarra con distorsión'
+        },
+        mid: {
+          name: 'Medios (0,5–1,6 kHz)',
+          more: 'sube MIDDLE, o pon un OD/DS de medios (T-SCREAM, MID BOOST) delante',
+          less: 'baja MIDDLE (el disco es más "scooped")'
+        },
+        highMid: {
+          name: 'Medios-agudos (1,6–4,5 kHz)',
+          more: 'sube TREBLE, o TONE en el OD/DS',
+          less: 'baja TREBLE o TONE en el OD/DS'
+        },
+        high: {
+          name: 'Agudos (4,5–10 kHz)',
+          more: 'sube PRESENCE o activa BRIGHT',
+          less: 'baja PRESENCE, apaga BRIGHT o usa un HIGH CUT en DELAY/REVERB — en un disco la caja microfoneada corta ese brillo'
+        }
+      },
+      table: 'Tabla por frecuencia',
+      frequency: 'frecuencia',
+      caveat:
+        'El stem de Demucs trae algo de filtración y el disco fue mezclado y masterizado, así que usa la sugerencia como dirección y confirma de oído. Esto mide el equilibrio de frecuencias: ganancia, compresión y ambiente los ajustas comparando los dos sonando.'
+    }
+  },
   update: {
     available: (version: string) => `Versión ${version} disponible`,
     download: 'Descargar',

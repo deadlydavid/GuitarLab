@@ -1,6 +1,6 @@
 import { app, ipcMain, shell, dialog, BrowserWindow } from 'electron'
-import { readFileSync, existsSync, copyFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { readFileSync, existsSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import { config, saveLibraryPaths } from '../config'
 import {
   activeSecrets,
@@ -47,11 +47,16 @@ import type { LlmListener } from '../services/llm'
 import {
   RIG_SETTING_KEY,
   normalizePlan,
+  normalizeGt1Plan,
   planPitchShifter,
-  buildToneContext
+  buildToneContext,
+  researchFromInsight,
+  researchToInsight
 } from '../services/tone'
 import {
   classifyVideosSystemPrompt,
+  gt1PatchPrompt,
+  gt1PatchSystemPrompt,
   practicePlanSystemPrompt,
   sectionsPrompt,
   sectionsSystemPrompt,
@@ -60,8 +65,12 @@ import {
   toChordProSystemPrompt,
   toneAdviceSystemPrompt,
   tonePatchPrompt,
-  tonePatchSystemPrompt
+  tonePatchSystemPrompt,
+  toneResearchPrompt,
+  toneResearchSystemPrompt
 } from '../services/prompts'
+import { stripInlineLinks } from '../services/llm/websearch'
+import { gt1CatalogueText, gt1KeyFor, gt1TargetsText, isGt1 } from '@shared/gt1'
 import { mainLocale, mt } from '../i18n'
 import { RIG_OUTPUT_EN } from '@shared/types'
 import { ffmpegVersion } from '../media/ffmpeg'
@@ -78,7 +87,8 @@ import type {
   YoutubeRole,
   RigView,
   TonePatchView,
-  TonePlanView
+  TonePlanView,
+  ToneResearchView
 } from '@shared/types'
 import { RIG_DEFAULT } from '@shared/types'
 import { activeGuitarPro } from '@shared/gpversions'
@@ -124,6 +134,69 @@ function streamTo(
       const win = getWindow()
       if (win && !win.isDestroyed()) win.webContents.send('llm:progress', event)
     }
+  }
+}
+
+/** The rig the tone answers are written for, or the default one. */
+function readRig(): RigView {
+  const raw = repo.getSetting(RIG_SETTING_KEY)
+  if (!raw) return RIG_DEFAULT
+  try {
+    return { ...RIG_DEFAULT, ...(JSON.parse(raw) as Partial<RigView>) }
+  } catch {
+    return RIG_DEFAULT
+  }
+}
+
+/**
+ * Look up how the record's guitars were tracked, and keep the answer.
+ *
+ * Asked with web search on: the patch prompt treats what comes back as the
+ * target, so it has to come from interviews and rig rundowns rather than from
+ * the model's idea of the genre. The citations are stored next to the text so
+ * the player can check them.
+ */
+async function runToneResearch(
+  songId: number,
+  getWindow: () => BrowserWindow | null
+): Promise<ToneResearchView> {
+  const song = repo.getSong(songId)
+  if (!song) throw new Error('Música não encontrada')
+  const sections = repo.listSections(songId).map((s) => s.name)
+  const context = [
+    `Song: ${song.title}${song.artist ? ` — ${song.artist}` : ''}`,
+    song.album ? `Album: ${song.album}` : null,
+    song.year ? `Year: ${song.year}` : null,
+    song.tuning ? `Tuning on the record: ${song.tuning.name}` : null,
+    sections.length ? `Sections: ${sections.join(', ')}` : null
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const result = await complete(
+    [
+      { role: 'system', content: toneResearchSystemPrompt(mainLocale()) },
+      { role: 'user', content: toneResearchPrompt(context) }
+    ],
+    { webSearch: true, ...streamTo(getWindow, 'pesquisa da gravação') }
+  )
+  const view = {
+    content: stripInlineLinks(result.text).trim(),
+    sources: result.sources,
+    grounded: result.sources.length > 0
+  }
+  repo.saveInsight({
+    songId,
+    kind: 'tone_research',
+    content: researchToInsight(view),
+    provider: result.provider,
+    model: result.model
+  })
+  return {
+    ...view,
+    provider: result.provider,
+    model: result.model,
+    createdAt: Math.floor(Date.now() / 1000)
   }
 }
 
@@ -792,6 +865,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
         'practice_plan',
         'technique_breakdown',
         'tone_advice',
+        'tone_research',
         'structure_summary',
         'daily_plan'
       ] as const),
@@ -904,15 +978,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
 
   /* ---------------------------------------------------------------- rig */
 
-  handle('gear:rig', (): RigView => {
-    const raw = repo.getSetting(RIG_SETTING_KEY)
-    if (!raw) return RIG_DEFAULT
-    try {
-      return { ...RIG_DEFAULT, ...(JSON.parse(raw) as Partial<RigView>) }
-    } catch {
-      return RIG_DEFAULT
-    }
-  })
+  handle('gear:rig', (): RigView => readRig())
 
   handle('gear:setRig', (rig: RigView) => {
     repo.setSetting(RIG_SETTING_KEY, JSON.stringify(rig))
@@ -946,19 +1012,25 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
    * a wall of text. Anything the model gets wrong structurally is repaired by
    * `normalizePatch` — a missing field should not blank the whole tab.
    */
-  handle('llm:tonePatch', async (songId: number) => {
+  /** The stored research on how the record was made, without asking again. */
+  handle('gear:research', (rawSongId: unknown) =>
+    researchFromInsight(repo.getInsight(asId(rawSongId, 'songId'), 'tone_research'))
+  )
+
+  /** Search the web again for how the record was made, replacing what is stored. */
+  handle('llm:toneResearch', async (rawSongId: unknown) => {
+    const songId = asId(rawSongId, 'songId')
+    if (!repo.getSong(songId)) return { error: 'Música não encontrada' }
+    return runToneResearch(songId, getWindow)
+  })
+
+  handle('llm:tonePatch', async (songId: number, rawWishes?: unknown) => {
     const song = repo.getSong(songId)
     if (!song) return { error: 'Música não encontrada' }
+    // what the player typed for this song; capped, it is prompt text
+    const wishes = (asOptionalString(rawWishes, 'wishes') ?? '').trim().slice(0, 1200)
 
-    const rawRig = repo.getSetting(RIG_SETTING_KEY)
-    let rig: RigView = RIG_DEFAULT
-    if (rawRig) {
-      try {
-        rig = { ...RIG_DEFAULT, ...(JSON.parse(rawRig) as Partial<RigView>) }
-      } catch {
-        /* keep the default rig */
-      }
-    }
+    const rig = readRig()
 
     /*
      * Two things the model is not asked to work out on its own:
@@ -973,12 +1045,79 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const sections = repo.listSections(songId).map((s) => s.name)
     const context = buildToneContext(song, rig, sections)
 
+    /*
+     * A GT-1 gets the exact path: research on how the record was made first
+     * (reused when already stored), then a prompt carrying the unit's whole
+     * parameter catalogue, then a validator that holds the answer to it.
+     */
+    if (isGt1(rig.processor)) {
+      let research = researchFromInsight(repo.getInsight(songId, 'tone_research'))
+      if (!research) {
+        try {
+          research = await runToneResearch(songId, getWindow)
+        } catch (err) {
+          // no research is a weaker patch, not a failed one
+          console.warn('[tone] pesquisa da gravação falhou:', err instanceof Error ? err.message : err)
+        }
+      }
+
+      const result = await complete(
+        [
+          { role: 'system', content: gt1PatchSystemPrompt(mainLocale()) },
+          {
+            role: 'user',
+            content: gt1PatchPrompt({
+              context,
+              output: rig.output,
+              pitch,
+              bpm: song.bpm,
+              masterKey: gt1KeyFor(song.musicalKey),
+              research: research?.content ?? null,
+              catalogue: gt1CatalogueText(),
+              targets: gt1TargetsText(),
+              wishes
+            })
+          }
+        ],
+        { json: true, maxTokens: 32768, ...streamTo(getWindow, 'patch de timbre') }
+      )
+
+      const parsed = parseJsonLoose<Record<string, unknown>>(result.text)
+      if (!parsed) return { error: 'A IA não devolveu um patch em JSON legível — tente de novo.' }
+      const plan: TonePlanView = {
+        ...normalizeGt1Plan(
+          parsed,
+          rig,
+          pitch,
+          { bpm: song.bpm, musicalKey: song.musicalKey },
+          result.provider,
+          result.model
+        ),
+        researchUsed: Boolean(research),
+        ...(wishes ? { wishes } : {})
+      }
+      if (!plan.patches.length) {
+        return { error: 'A IA respondeu, mas sem nenhum bloco utilizável — tente de novo.' }
+      }
+      repo.upsertGearPatch({
+        songId,
+        instrument: 'guitar',
+        device: rig.processor,
+        patchName: plan.patches.map((p) => p.patchName).join(' · '),
+        settingsJson: JSON.stringify(plan),
+        notes: plan.patches[0].notes
+      })
+      return plan
+    }
+
     const result = await complete(
       [
         { role: 'system', content: tonePatchSystemPrompt(mainLocale()) },
         {
           role: 'user',
-          content: tonePatchPrompt(context, RIG_OUTPUT_EN[rig.output].toLowerCase(), pitch)
+          content:
+            tonePatchPrompt(context, RIG_OUTPUT_EN[rig.output].toLowerCase(), pitch) +
+            (wishes ? `\n\nThe player's request for this song (follow it):\n${wishes}` : '')
         }
       ],
       { json: true, ...streamTo(getWindow, 'patch de timbre') }
@@ -1007,15 +1146,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const song = repo.getSong(songId)
     if (!song) return { error: 'Música não encontrada' }
 
-    const rawRig = repo.getSetting(RIG_SETTING_KEY)
-    let rig: RigView = RIG_DEFAULT
-    if (rawRig) {
-      try {
-        rig = { ...RIG_DEFAULT, ...(JSON.parse(rawRig) as Partial<RigView>) }
-      } catch {
-        /* keep the default rig */
-      }
-    }
+    const rig = readRig()
+    const research = researchFromInsight(repo.getInsight(songId, 'tone_research'))
 
     // the prose answer sits next to the patch cards, so it has to start from the
     // same facts — same rig, same tuning decision, same footswitch
@@ -1033,6 +1165,15 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
           role: 'user',
           content:
             `${context}\n\n` +
+            (research ? `Como o disco foi gravado (pesquisa na web):\n${research.content}\n\n` : '') +
+            /*
+             * With a GT-1 the prose is held to the same catalogue as the patch:
+             * left to itself the model writes about "Voice" and "Direct Mix",
+             * which the unit does not have.
+             */
+            (isGt1(rig.processor)
+              ? `Parâmetros que existem na GT-1 (use só estes nomes e faixas):\n${gt1CatalogueText()}\n\n`
+              : '') +
             `Afinação na prática: ${pitch.note}\n\n` +
             'Explique o timbre dessa música para essa pedaleira: tipo de amp, ganho, EQ ' +
             '(graves/médios/agudos), quais efeitos ligar e com que ajuste. Se a música muda de ' +
@@ -1179,5 +1320,56 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     if (!win) return null
     const res = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
     return res.canceled ? null : res.filePaths[0]
+  })
+
+  /* ---------------------------------------------------------------- GT-1 */
+
+  /*
+   * The MIDI conversation with the unit happens in the renderer (Web MIDI);
+   * these two only put the .tsl files it produces on disk. A backup of every
+   * slot the app overwrites goes to userData/gt1-backups before the write, so
+   * a patch replaced by a suggestion can always be brought back through BOSS
+   * TONE STUDIO.
+   */
+  const gt1BackupDir = (): string => join(app.getPath('userData'), 'gt1-backups')
+  const tslContent = (raw: unknown): string => {
+    const text = asString(raw, 'content', 5_000_000)
+    const parsed = JSON.parse(text) as { device?: unknown }
+    if (parsed.device !== 'GT-1') throw new Error('o conteúdo não é um liveset da GT-1')
+    return text
+  }
+  const safeFileName = (raw: unknown): string =>
+    asString(raw, 'fileName')
+      // characters Windows refuses in a file name, and control characters
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+      .slice(0, 120) || 'gt1'
+
+  handle('gt1:saveBackup', (rawName: unknown, rawContent: unknown) => {
+    const dir = gt1BackupDir()
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, `${safeFileName(rawName)}.tsl`)
+    writeFileSync(file, tslContent(rawContent), 'utf8')
+    return file
+  })
+
+  handle('gt1:exportTsl', async (rawName: unknown, rawContent: unknown) => {
+    const content = tslContent(rawContent)
+    const win = getWindow()
+    const options = {
+      title: 'Exportar para o BOSS TONE STUDIO',
+      defaultPath: join(app.getPath('documents'), `${safeFileName(rawName)}.tsl`),
+      filters: [{ name: 'Liveset do BOSS TONE STUDIO', extensions: ['tsl'] }]
+    }
+    const res = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (res.canceled || !res.filePath) return null
+    writeFileSync(res.filePath, content, 'utf8')
+    return res.filePath
+  })
+
+  handle('gt1:openBackups', async () => {
+    const dir = gt1BackupDir()
+    mkdirSync(dir, { recursive: true })
+    await shell.openPath(dir)
+    return dir
   })
 }

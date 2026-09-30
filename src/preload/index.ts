@@ -209,7 +209,8 @@ const api = {
   gear: {
     rig: () => invoke('gear:rig'),
     setRig: (rig: unknown) => invoke('gear:setRig', rig),
-    patch: (songId: number) => invoke('gear:patch', songId)
+    patch: (songId: number) => invoke('gear:patch', songId),
+    research: (songId: number) => invoke('gear:research', songId)
   },
   /** The AI answers already stored for a song, read without asking the model. */
   insights: {
@@ -232,7 +233,8 @@ const api = {
       invoke('llm:techniqueBreakdown', songId, sectionId),
     toneAdvice: (songId: number) => invoke('llm:toneAdvice', songId),
     sections: (songId: number) => invoke('llm:sections', songId),
-    tonePatch: (songId: number) => invoke('llm:tonePatch', songId),
+    tonePatch: (songId: number, wishes?: string) => invoke('llm:tonePatch', songId, wishes ?? null),
+    toneResearch: (songId: number) => invoke('llm:toneResearch', songId),
     classifyVideos: (videos: unknown[]) => invoke('llm:classifyVideos', videos),
     toChordPro: (songId: number, rawText: string) => invoke('llm:toChordPro', songId, rawText)
   },
@@ -250,6 +252,12 @@ const api = {
     openExternal: (url: string) => invoke('shell:openExternal', url),
     showItem: (path: string) => invoke('shell:showItem', path),
     pickFolder: () => invoke<string | null>('shell:pickFolder')
+  },
+  /** .tsl files for the GT-1: backups of overwritten slots, and exports for BOSS TONE STUDIO. */
+  gt1: {
+    saveBackup: (fileName: string, content: string) => invoke<string>('gt1:saveBackup', fileName, content),
+    exportTsl: (fileName: string, content: string) => invoke<string | null>('gt1:exportTsl', fileName, content),
+    openBackups: () => invoke<string>('gt1:openBackups')
   },
   /**
    * Turn an absolute local path into a URL the renderer is allowed to load.

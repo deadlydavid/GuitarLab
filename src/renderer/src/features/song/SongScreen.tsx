@@ -1247,7 +1247,7 @@ export function SongScreen({
           {tab === 'cifra' && (
             <ChartTab song={song} media={media} sections={sections} onChanged={refresh} />
           )}
-          {tab === 'timbre' && <ToneTab song={song} />}
+          {tab === 'timbre' && <ToneTab song={song} media={media} sections={sections} />}
           {tab === 'afinador' && <TunerScreen songId={song.id} />}
           {tab === 'lab' && <LabScreen songId={song.id} embedded />}
           {tab === 'dados' && (

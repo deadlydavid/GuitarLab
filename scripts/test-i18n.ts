@@ -81,6 +81,18 @@ console.log('\n=== 5. traduções que ficaram idênticas ao português ===')
  * cases where it is correct: proper nouns, YouTube jargon, units and symbols.
  */
 const SAME_ON_PURPOSE = new Set([
+  // "original", "Graves", "Agudos" and the stem's own name read the same in Spanish
+  'tone.match.refOther',
+  'tone.match.legendRef',
+  'tone.match.seriesRef',
+  'tone.match.regions.low.name',
+  'tone.match.regions.high.name',
+  // "slot" is the unit's own word, and these read the same in Spanish
+  'tone.gt1.slot',
+  'tone.gt1.export',
+  'tone.gt1.connecting',
+  'tone.gt1.connected',
+  'tone.gt1.cancel',
   'common.empty',
   'common.no',
   'units.hour',
@@ -261,7 +273,7 @@ console.log('\n=== 8. português cru na interface ===')
  * Lower this number as screens are migrated. When it reaches zero, replace the
  * detector with a proper AST pass and make it a hard failure.
  */
-const BASELINE = 70
+const BASELINE = 67
 
 const PT_HINT =
   /[áàâãéêíóôõúüç]|\b(não|você|música|pasta|nenhum|nenhuma|arquivo|trecho|ainda|agora|salvo|falha|erro)\b/i

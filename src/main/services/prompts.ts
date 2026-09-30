@@ -1,4 +1,5 @@
 import { LOCALE_PROMPT_NAMES, type Locale } from '@shared/i18n'
+import { GT1_CTL_FUNCS } from '@shared/gt1'
 
 /**
  * The prompts, and the one line in each that carries the user's language.
@@ -108,6 +109,236 @@ export function tonePatchPrompt(
     '"listenFor":"","notes":""}]}'
   )
 }
+
+/* ---------------------------------------------------------- tone: GT-1 */
+
+/**
+ * Research first, patch second.
+ *
+ * The patch is only as close to the record as the model's idea of how the
+ * record was made, and "thrash metal, so a high-gain amp" is the cliché, not
+ * the recording. This asks the model to go and look — interviews, rig
+ * rundowns, production credits — and to say "not documented" instead of
+ * filling the gap, because the patch prompt treats what comes back as fact.
+ */
+export function toneResearchSystemPrompt(locale: Locale): string {
+  return (
+    'You research how specific recordings were made: guitars, pickups, amps, ' +
+    'cabinets, pedals, microphones, studio and production. You search the web ' +
+    '(interviews with the players, producers and engineers, rig rundowns, liner ' +
+    'notes, gear databases, reputable forums) and you say plainly when something is ' +
+    'not documented instead of guessing. Answer in markdown with short ### headings. ' +
+    'Keep gear, model and control names exactly as the manufacturer writes them. ' +
+    proseDirective(locale)
+  )
+}
+
+export function toneResearchPrompt(context: string): string {
+  return (
+    `${context}\n\n` +
+    'Find out how the GUITAR parts of this exact studio recording were tracked — the ' +
+    'album version, not a live rig, unless the studio rig is unknown (then say so and ' +
+    'give the closest documented rig of that era). Cover, in this order, one ### ' +
+    'heading each:\n' +
+    '1. Recording: studio, year, producer and engineer; how the guitars were tracked ' +
+    '(how many layers, double-tracking, panning, re-amping).\n' +
+    '2. Guitars: who plays which part, which guitars and pickups.\n' +
+    '3. Amps and cabinets: heads or combos with channel and any known settings, ' +
+    'speakers, microphones and where they were placed.\n' +
+    '4. Effects: pedals and rack units, and in which part of the song each one is heard.\n' +
+    '5. Tone by section: how the sound changes between the parts of the song (clean ' +
+    'intro, harmonised leads, solo…).\n' +
+    '6. What to chase: 3 to 6 bullets with the concrete characteristics of the ' +
+    'recorded tone (amount of gain, where the mids sit, how tight the low end is, how ' +
+    'dark or bright the top is, delay time, room).\n\n' +
+    'Mark anything uncertain as uncertain. Never invent settings or gear. At most 450 words.'
+  )
+}
+
+export function gt1PatchSystemPrompt(locale: Locale): string {
+  return (
+    'You are a guitar tech who programs the BOSS GT-1 in BOSS TONE STUDIO every day. ' +
+    'You know its blocks, types, parameter names and ranges exactly as listed in the ' +
+    'prompt, and you never use a parameter, type or value that is not on that list. ' +
+    'Answer with valid JSON only: no commentary, no code fences. ' +
+    jsonDirective(locale, [
+      'patchName',
+      'appliesTo',
+      'summary',
+      'listenFor',
+      'notes',
+      'blocks.note',
+      'controls.action',
+      'controls.when',
+      'assigns.purpose',
+      'cues.action'
+    ])
+  )
+}
+
+/**
+ * The GT-1 patch prompt.
+ *
+ * Longer than the generic one because it has to be exact: the whole parameter
+ * catalogue goes in (generated from the same table the answer is validated
+ * against), plus the controller model that lets one patch play a whole song —
+ * CTL1, the EXP pedal, its toe switch and six ASSIGNs.
+ */
+export function gt1PatchPrompt(input: {
+  context: string
+  output: 'pa' | 'fones' | 'amp'
+  pitch: { enabled: boolean; playedTuning: string; recordTuning: string; semitones: number }
+  bpm: number | null
+  masterKey: string | null
+  research: string | null
+  catalogue: string
+  targets: string
+  /** The player's own request for this song, in their words. */
+  wishes?: string | null
+}): string {
+  const { pitch } = input
+  const tuning = pitch.enabled
+    ? `The guitar stays in ${pitch.playedTuning}; the record is in ${pitch.recordTuning}. ` +
+      `FX1 is RESERVED in every patch: TYPE PITCH SHIFTER, PITCH ${pitch.semitones}, FINE 0, ` +
+      'PRE DELAY 0 ms, FEEDBACK 0, E.LEVEL 100, D.LEVEL 0 (shifted signal only), and FX1 ' +
+      'first in the chain. FX2 is the only free FX slot — spend it on what the song needs most.'
+    : `The guitar stays in ${pitch.playedTuning} and the song needs no pitch shifter: FX1 ` +
+      'and FX2 are both free.'
+
+  const output =
+    input.output === 'amp'
+      ? 'The GT-1 goes into the front of a guitar amplifier: OUTPUT SELECT is set for that ' +
+        'amp, and SP TYPE has no effect in that mode (it only works with LINE/PHONES), so ' +
+        'leave SP TYPE out and shape the tone knowing a real speaker follows.'
+      : `The GT-1 goes direct into ${input.output === 'fones' ? 'headphones' : 'a PA / mixing desk'} ` +
+        'with OUTPUT SELECT = LINE/PHONES, so SP TYPE is active: always pick a cabinet in ' +
+        'PREAMP (ORIGIN, 1x12", 2x12", 4x12"…). A direct signal tends to come out harsher ' +
+        'than a miked cabinet — keep PRESENCE and TREBLE honest.'
+
+  const research = input.research
+    ? 'HOW THE RECORD WAS MADE (web research — this is the target; match THIS gear, not ' +
+      "the genre's cliché):\n" +
+      `${input.research}\n\n` +
+      'Map each piece of recorded gear to the closest GT-1 type — the lists below say what ' +
+      'each type models — and say in that block\'s "note" which real unit it stands in for.'
+    : 'No research on the recording is available; use what you reliably know about how ' +
+      'this record was made, and say in "notes" what is uncertain.'
+
+  const facts = [
+    input.bpm ? `MASTER BPM = ${Math.round(input.bpm)} (the song's tempo).` : null,
+    input.masterKey ? `MASTER KEY = ${input.masterKey} (the song's key; the HARMONIST follows it).` : null
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const wishes = input.wishes?.trim()
+    ? "THE PLAYER'S REQUEST for this song — follow it; if the GT-1 cannot do part of it, " +
+      `say so in "notes" and do the closest thing it can:\n${input.wishes.trim()}\n\n`
+    : ''
+
+  return (
+    `${input.context}\n\n` +
+    `${research}\n\n` +
+    wishes +
+    `TUNING. ${tuning}\n\n` +
+    `OUTPUT. ${output}\n\n` +
+    (facts ? `SONG FACTS. ${facts}\n\n` : '') +
+    'THE GOAL is a patch the player can build in BOSS TONE STUDIO knob by knob and play ' +
+    'the whole song with, sounding as close to the record as the GT-1 allows. Use the ' +
+    'unit to the full: both FX slots, the chain order, the EXP pedal, CTL1 and the ' +
+    'ASSIGNs.\n\n' +
+    'HOW MANY PATCHES. Prefer ONE patch for the whole song and move between its parts ' +
+    'with the controllers: CTL1 turning a rhythm tone into a lead tone, the harmony or ' +
+    'delay coming in, the EXP pedal for wah or volume swells. Return a second (or third) ' +
+    'patch ONLY when the amp character itself changes — a clean section against a ' +
+    'distorted one, for example — where no knob movement gets there. A lead line, a solo ' +
+    'or a harmonised passage played over the same distorted amp is NOT a new patch: it ' +
+    'lives in the distorted patch and CTL1 brings it in (ASSIGNs on the FX ON/OFF, ' +
+    'PREAMP GAIN, DELAY, PATCH LVL). At most 3 patches, in playing order. In "appliesTo" ' +
+    'say which parts of the song each patch covers, using the section names when there ' +
+    'are any.\n\n' +
+    'FX SLOTS ARE SCARCE. Do the tone-shaping EQ with MASTER EQ, which costs no FX slot, ' +
+    'and keep FX1/FX2 for effects the song actually needs (harmony, chorus, compressor, ' +
+    'octave…). Spend an FX slot on GRAPHIC EQ or PARA.EQ only when nothing else needs it. ' +
+    'If the record has harmonised twin-guitar lines, the patch those lines are played on ' +
+    'carries a HARMONIST (off in the patch, switched on by CTL1 through an ASSIGN) so one ' +
+    'guitarist can play both parts.\n\n' +
+    'THE GT-1, EXACTLY (block → TYPE → parameters and ranges; nothing else exists):\n' +
+    `${input.catalogue}\n\n` +
+    'CHAIN. The nine blocks FX1, PDL, OD, PrA, NS, DLY, FV, FX2, REV can be put in any ' +
+    'order; default FX1 PDL OD PrA NS DLY FV FX2 REV. Put effects that track pitch or ' +
+    'shape the input (PITCH SHIFTER, HARMONIST, OCTAVE, PEDAL BND, COMPRESSOR, SLOW GEAR) ' +
+    'BEFORE OD and PrA; wah (PDL) before OD; NS right after PrA; modulation, delay and ' +
+    'reverb after PrA. "chain" lists all nine labels in the order you want.\n\n' +
+    'CONTROLLERS — this is how one patch covers several parts of a song. Built in: CTL1 ' +
+    '(footswitch), the EXP pedal (EXP1) and its toe switch (EXP SW). The ▼/▲ switches ' +
+    'stay for changing patches; do not use them, and do not use CTL2, CTL3 or EXP2 (they ' +
+    'need an external pedal the player does not have).\n' +
+    `- CTL1 and EXP SW each have a FUNC: ${GT1_CTL_FUNCS_TEXT}; MODE MOMENT or TOGGLE. With ` +
+    'OD SOLO or PrA SOLO also set "soloLevel" 0..100, the volume while the solo is on. ' +
+    'EXP SW cannot use BPM TAP or DELAY TAP.\n' +
+    '- EXP1 has a FUNCTION: OFF, FOOT VOL, PEDAL FX, PDL FX/FV (with PDL FX/FV the toe ' +
+    'switch flips the pedal between wah and volume).\n' +
+    '- ASSIGN 1-6: SOURCE (CTL 1, EXP 1, INT PEDAL, WAVE PEDAL), MODE (MOMENT/TOGGLE), ' +
+    'TARGET CATEGORY + TARGET from the list below, TARGET MIN (switch off / pedal heel) ' +
+    'and TARGET MAX (switch on / pedal toe), in the target\'s own units. Every ASSIGN on ' +
+    'the same SOURCE moves with one press, so CTL1 can turn rhythm into lead in one go — ' +
+    'e.g. ASSIGN1 CTL 1 → PREAMP GAIN 55→78, ASSIGN2 CTL 1 → FX2 ON/OFF OFF→ON (harmony), ' +
+    'ASSIGN3 CTL 1 → DELAY E.LEVEL 0→35, ASSIGN4 CTL 1 → MASTER PATCH LVL 100→115. ' +
+    'INT PEDAL moves the target once from MIN to MAX after a TRIGGER (PAT CNG, EXP1 LO, ' +
+    'EXP1 MID, EXP1 HI, EXP1 SW, CTL1 PDL) over TIME 0..100 with CURVE LINEAR/SLOW/FAST; ' +
+    'WAVE PEDAL cycles it at a RATE (0..100 or a BPM note) with WAVEFORM SAW/TRI/SINE. ' +
+    'Both need MODE MOMENT.\n' +
+    `- TARGET list ("n" = 1 for FX1, 2 for FX2, and must match the effect loaded in that ` +
+    `slot): ${input.targets}\n` +
+    '- Rules: when an ASSIGN uses CTL 1 or EXP 1, set that control\'s own FUNC/FUNCTION to ' +
+    'OFF unless you really want both actions; never let a FUNC and an ASSIGN switch the ' +
+    'same block. An FX slot that CTL1 or an ASSIGN turns on is still listed in "blocks", ' +
+    'with "enabled": false and its full settings.\n\n' +
+    'TRICKS THE GT-1 CAN DO. Twin-guitar harmony: the player plays the main melody and ' +
+    'the HARMONIST in a free FX slot plays the second guitar — a third BELOW by default ' +
+    '(HARMONY -3rd); use +3rd only when the record\'s second guitar sits above the ' +
+    'melody. MASTER KEY in the song\'s key, the HARMONIST before OD/PrA in the chain (and ' +
+    'right after the tuning PITCH SHIFTER when FX1 holds one, so it hears the notes in ' +
+    'the record\'s key). It tracks single notes only, so switch it on for the harmonised ' +
+    'lines and off for chords. A fake double-tracked rhythm (stereo output): CHORUS MODE STEREO2 with DEPTH ' +
+    '0, or PITCH SHIFTER PITCH 0 with FINE ±6..10 and PRE DELAY 15..30 ms. Solo boost ' +
+    'that keeps the tone: OD SOLO or PrA SOLO on CTL1 with a SOLO LEVEL, or an ASSIGN on ' +
+    'PATCH LVL. Delay in time with the song: TIME as a BPM note ("BPM 1/8.", "BPM 1/4") ' +
+    'rides MASTER BPM.\n\n' +
+    'VALUES. "value" is the number exactly as BOSS TONE STUDIO shows it, in the ' +
+    "parameter's own range and unit (GAIN 0..120, TONE -50..+50, DELAY TIME in ms, " +
+    'REVERB TIME in seconds, EQ gains in dB). Use "text" with "value": null for choices ' +
+    '(sub-types, SP TYPE, ON/OFF, HIGH CUT/LOW CUT/FREQ like "6.3kHz" or "FLAT", Q, ' +
+    'RATIO, HARMONY, KEY) and for BPM-synced times like "BPM 1/8.". Give EVERY parameter ' +
+    'of each block you list. Leave out blocks that stay off and are never switched on; ' +
+    'always include a MASTER block (PATCH LVL, BPM, KEY and the MASTER EQ) and set PATCH ' +
+    'LVL so every patch of the song sits at the same loudness. "patchName" has at most 16 ' +
+    'characters (the GT-1\'s limit).\n\n' +
+    'EQ. A recorded guitar is a miked cabinet inside a mix: the top usually rolls off ' +
+    'above 6-8 kHz and the low end is tightened below 80-100 Hz. Get close with the amp ' +
+    'knobs and SP TYPE first; use MASTER EQ for the rest. The app then measures the ' +
+    'player\'s sound against the isolated guitar stem and suggests GEQ values, so aim for ' +
+    'a musical starting point, not an EQ puzzle.\n\n' +
+    '"cues" is the live cue sheet for the whole song in playing order: for each part ' +
+    '(section names when there are any), which patch is active and exactly what the ' +
+    'player does with the feet (press CTL1, EXP pedal to the toe, press EXP SW…).\n\n' +
+    'Exact format:\n' +
+    '{"patches":[{"patchName":"","appliesTo":"","summary":"",' +
+    '"chain":["FX1","PDL","OD","PrA","NS","DLY","FV","FX2","REV"],' +
+    '"blocks":[{"slot":"PREAMP","model":"MS1959 I+II","enabled":true,' +
+    '"params":[{"label":"GAIN","value":70,"text":null},{"label":"SP TYPE","value":null,"text":"4x12\\""}],' +
+    '"note":""},{"slot":"MASTER","model":"","enabled":true,"params":[{"label":"PATCH LVL","value":100,"text":null}],"note":""}],' +
+    '"controls":[{"source":"CTL1","func":"OFF","mode":"TOGGLE","soloLevel":null,"action":"","when":""},' +
+    '{"source":"EXP1","func":"PDL FX/FV","mode":null,"soloLevel":null,"action":"","when":""}],' +
+    '"assigns":[{"source":"CTL 1","mode":"TOGGLE","category":"PREAMP","target":"GAIN","min":55,"max":78,"purpose":""}],' +
+    '"listenFor":"","notes":""}],' +
+    '"cues":[{"section":"","patch":"","action":""}]}'
+  )
+}
+
+/** The FUNC list minus NUMBER +1/-1: a patch that changes patch is not what CTL1 is for here. */
+const GT1_CTL_FUNCS_TEXT = GT1_CTL_FUNCS.filter((f) => !f.startsWith('NUMBER')).join(', ')
 
 /* -------------------------------------------------------------- markdown */
 

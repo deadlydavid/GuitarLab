@@ -5,7 +5,9 @@ import type {
   PatchBlock,
   PatchParam,
   CtrlAssignment,
-  PitchShifterPlan
+  PitchShifterPlan,
+  ToneResearchView,
+  WebSource
 } from '@shared/types'
 import { RIG_OUTPUT_EN } from '@shared/types'
 
@@ -176,4 +178,56 @@ export function buildToneContext(
  * Re-exported here so the existing call sites and tests keep working.
  */
 export { tonePatchSystemPrompt, tonePatchPrompt } from './prompts'
+export { normalizeGt1Plan, fitGt1Patch, fitParam, fitChain, paramText } from './tonegt1'
+
+/* ------------------------------------------------------------- research */
+
+/**
+ * The web research is stored as an insight like every other AI answer, but it
+ * has sources beside the text, so the row holds a small JSON document instead
+ * of bare markdown. Reading tolerates a row of plain markdown too — whatever
+ * was stored stays readable.
+ */
+export function researchToInsight(r: {
+  content: string
+  sources: WebSource[]
+  grounded: boolean
+}): string {
+  return JSON.stringify({ content: r.content, sources: r.sources, grounded: r.grounded })
+}
+
+export function researchFromInsight(
+  row: { content: string; provider: string | null; model: string | null; createdAt: number } | null
+): ToneResearchView | null {
+  if (!row) return null
+  let content = row.content
+  let sources: WebSource[] = []
+  let grounded = false
+  try {
+    const parsed = JSON.parse(row.content) as {
+      content?: unknown
+      sources?: unknown
+      grounded?: unknown
+    }
+    if (typeof parsed.content === 'string') {
+      content = parsed.content
+      sources = Array.isArray(parsed.sources)
+        ? (parsed.sources as WebSource[]).filter(
+            (s) => s && typeof s.url === 'string' && /^https?:\/\//.test(s.url)
+          )
+        : []
+      grounded = parsed.grounded === true
+    }
+  } catch {
+    // plain markdown: keep it as the content
+  }
+  return {
+    content,
+    sources,
+    grounded,
+    provider: row.provider,
+    model: row.model,
+    createdAt: row.createdAt
+  }
+}
 

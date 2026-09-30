@@ -365,6 +365,7 @@ export const llmInsights = sqliteTable(
         'practice_plan',
         'technique_breakdown',
         'tone_advice',
+        'tone_research',
         'structure_summary',
         'daily_plan'
       ]

@@ -12,14 +12,30 @@ import { readFileSync } from 'node:fs'
 import {
   normalizePatch,
   normalizePlan,
+  normalizeGt1Plan,
   planPitchShifter,
   buildToneContext
 } from '../src/main/services/tone'
-import { tonePatchPrompt, tonePatchSystemPrompt } from '../src/main/services/prompts'
+import {
+  gt1PatchPrompt,
+  gt1PatchSystemPrompt,
+  tonePatchPrompt,
+  tonePatchSystemPrompt,
+  toneResearchPrompt,
+  toneResearchSystemPrompt
+} from '../src/main/services/prompts'
 import { LOCALES, LOCALE_PROMPT_NAMES } from '../src/shared/i18n'
 import { RIG_OUTPUT_EN } from '../src/shared/types'
 import { parseJsonLoose } from '../src/main/services/llm/pure'
-import { RIG_DEFAULT, type TonePatchView } from '../src/shared/types'
+import { readSse } from '../src/main/services/llm/events'
+import {
+  dedupeSources,
+  geminiGrounding,
+  parseResponsesEvent,
+  stripInlineLinks
+} from '../src/main/services/llm/websearch'
+import { gt1CatalogueText, gt1KeyFor, gt1TargetsText, paramText } from '../src/shared/gt1'
+import { RIG_DEFAULT, type TonePatchView, type WebSource } from '../src/shared/types'
 
 const env: Record<string, string> = {}
 for (const line of readFileSync(new URL('../.env', import.meta.url), 'utf8').split(/\r?\n/)) {
@@ -55,7 +71,7 @@ interface GeminiResponse {
   }>
 }
 
-async function callGemini(prompt: string, system: string): Promise<string> {
+async function callGemini(prompt: string, system: string, maxTokens = 16384): Promise<string> {
   const model = env.GEMINI_MODEL || 'gemini-3.5-flash'
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -74,7 +90,7 @@ async function callGemini(prompt: string, system: string): Promise<string> {
            * app's ceiling truncates a four-patch answer intermittently. The
            * test was failing on a limit the app does not use.
            */
-          maxOutputTokens: 16384,
+          maxOutputTokens: maxTokens,
           responseMimeType: 'application/json'
         }
       })
@@ -87,7 +103,7 @@ async function callGemini(prompt: string, system: string): Promise<string> {
   return text
 }
 
-async function callOpenAi(prompt: string, system: string): Promise<string> {
+async function callOpenAi(prompt: string, system: string, maxTokens = 4096): Promise<string> {
   const key = env.OPEN_AI_API_KEY || env.OPENAI_API_KEY
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -99,7 +115,7 @@ async function callOpenAi(prompt: string, system: string): Promise<string> {
         { role: 'user', content: prompt }
       ],
       response_format: { type: 'json_object' },
-      max_completion_tokens: 4096
+      max_completion_tokens: maxTokens
     })
   })
   const body = await res.text()
@@ -108,6 +124,81 @@ async function callOpenAi(prompt: string, system: string): Promise<string> {
   const text = data.choices?.[0]?.message?.content ?? ''
   if (!text) throw new Error('resposta vazia')
   return text
+}
+
+/** Gemini with Google Search grounding, streamed and parsed exactly as the app does. */
+async function researchGemini(
+  prompt: string,
+  system: string
+): Promise<{ text: string; sources: WebSource[]; queries: string[] }> {
+  const model = env.GEMINI_MODEL || 'gemini-3.5-flash'
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 16384 }
+      })
+    }
+  )
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  let text = ''
+  const sources: WebSource[] = []
+  const queries: string[] = []
+  for await (const payload of readSse(res.body)) {
+    let parsed: { candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }> }
+    try {
+      parsed = JSON.parse(payload)
+    } catch {
+      continue
+    }
+    const cand = parsed.candidates?.[0]
+    for (const part of cand?.content?.parts ?? []) if (part.text && !part.thought) text += part.text
+    const g = geminiGrounding(cand)
+    sources.push(...g.sources)
+    for (const q of g.queries) if (!queries.includes(q)) queries.push(q)
+  }
+  return { text, sources: dedupeSources(sources), queries }
+}
+
+/** The Responses API with web_search, streamed and parsed exactly as the app does. */
+async function researchOpenAi(
+  prompt: string,
+  system: string
+): Promise<{ text: string; sources: WebSource[]; queries: string[] }> {
+  const key = env.OPEN_AI_API_KEY || env.OPENAI_API_KEY
+  const res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: env.OPENAI_MODEL || 'gpt-5.4-nano',
+      instructions: system,
+      input: prompt,
+      tools: [{ type: 'web_search' }],
+      stream: true,
+      max_output_tokens: 16384
+    })
+  })
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  let text = ''
+  const sources: WebSource[] = []
+  const queries: string[] = []
+  for await (const payload of readSse(res.body)) {
+    const e = parseResponsesEvent(payload)
+    if (!e) continue
+    if (e.kind === 'text') text += e.delta
+    else if (e.kind === 'search') queries.push(e.query)
+    else if (e.kind === 'sources') sources.push(...e.sources)
+    else if (e.kind === 'done' || e.kind === 'incomplete') {
+      if (!text) text = e.text
+      sources.push(...e.sources)
+    } else if (e.kind === 'error') throw new Error(e.message)
+  }
+  return { text, sources: dedupeSources(sources), queries }
 }
 
 function validatePatch(patch: TonePatchView, label: string): void {
@@ -327,6 +418,109 @@ async function main(): Promise<void> {
     }
   }
   check('pelo menos um provedor gerou um patch valido', anyProviderWorked)
+
+  console.log('\n=== 5. GT-1 ao vivo: pesquisa na web e patch conferido ===')
+  /*
+   * The same two calls the app makes for a GT-1: the Responses API with
+   * web_search, read by the same SSE parser the driver uses, and then the
+   * patch prompt with the whole catalogue, held to it by the validator.
+   */
+  let research: string | null = null
+  const researchPrompt = toneResearchPrompt(
+    `Song: ${SONG.title} — ${SONG.artist}\nAlbum: Master of Puppets\nYear: 1986`
+  )
+  for (const [name, search] of [
+    ['openai', researchOpenAi],
+    ['gemini', researchGemini]
+  ] as const) {
+    try {
+      const t0 = Date.now()
+      const found = await search(researchPrompt, toneResearchSystemPrompt('pt-BR'))
+      research = stripInlineLinks(found.text)
+      check(`${name}: pesquisa trouxe texto`, research.length > 200, `${research.length} chars`)
+      check(`${name}: pesquisa citou fontes da web`, found.sources.length > 0, `${found.sources.length} fontes`)
+      check(`${name}: a busca rodou`, found.queries.length > 0, found.queries.slice(0, 3).join(' | '))
+      console.log(`       ${Date.now() - t0}ms`)
+      console.log(research.split('\n').map((l) => `       │ ${l}`).join('\n'))
+      for (const src of found.sources.slice(0, 6)) console.log(`       ↗ ${src.title} — ${src.url}`)
+      break
+    } catch (err) {
+      console.log(`  AVISO ${name}: pesquisa indisponivel -- ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  for (const [name, call] of [
+    ['openai', callOpenAi],
+    ['gemini', callGemini]
+  ] as const) {
+  try {
+    const t0 = Date.now()
+    const gtPrompt = gt1PatchPrompt({
+      context,
+      output: 'pa',
+      pitch,
+      bpm: SONG.bpm,
+      masterKey: gt1KeyFor(SONG.musicalKey),
+      research,
+      catalogue: gt1CatalogueText(),
+      targets: gt1TargetsText(),
+      // the player's own case: the harmonised lead played alone, a third below
+      wishes: 'Harmonia uma terça abaixo no solo melódico, para soar como as duas guitarras dobradas.'
+    })
+    const text = await call(gtPrompt, gt1PatchSystemPrompt('pt-BR'), 32768)
+    const parsed = parseJsonLoose<Record<string, unknown>>(text)
+    check(`${name}: GT-1 em JSON parseavel`, parsed !== null, parsed ? '' : text.slice(0, 160))
+    if (parsed) {
+      const plan = normalizeGt1Plan(parsed, RIG_DEFAULT, pitch, { bpm: SONG.bpm, musicalKey: SONG.musicalKey }, 'openai', 'x')
+      console.log(`       ${Date.now() - t0}ms | ${plan.patches.length} patch(es) | ${plan.cues?.length ?? 0} deixas`)
+      check('GT-1: 1 a 3 patches', plan.patches.length >= 1 && plan.patches.length <= 3, `${plan.patches.length}`)
+      const warnings: string[] = []
+      for (const p of plan.patches) {
+        console.log(`       ▸ ${p.patchName} — ${p.appliesTo}`)
+        console.log(`         cadeia: ${p.chain.join(' > ')}`)
+        for (const b of p.blocks) {
+          if (b.warning) warnings.push(`${b.slot}: ${b.warning}`)
+          console.log(
+            `         ${b.enabled ? '●' : '○'} ${b.slot} = ${b.model}: ` +
+              b.params
+                .map((x) => {
+                  if (x.warning) warnings.push(`${b.slot}.${x.label}: ${x.warning}`)
+                  return `${x.label}=${paramText(x)}${x.warning ? '⚠' : ''}`
+                })
+                .join(', ')
+          )
+        }
+        for (const c of p.controls ?? []) {
+          if (c.warning) warnings.push(`${c.source}: ${c.warning}`)
+          console.log(`         [${c.source}] ${c.func} ${c.mode ?? ''} — ${c.action}`)
+        }
+        for (const a of p.assigns ?? []) {
+          if (a.warning) warnings.push(`ASSIGN${a.number}: ${a.warning}`)
+          console.log(`         ASSIGN${a.number} ${a.source} ${a.category}›${a.target} ${a.min}→${a.max} — ${a.purpose}`)
+        }
+        check(`GT-1/${p.patchName}: tem PREAMP`, p.blocks.some((b) => b.slot === 'PREAMP'))
+        check(`GT-1/${p.patchName}: FX1 é o pitch shifter da afinação`, p.blocks.find((b) => b.slot === 'FX1')?.model === 'PITCH SHIFTER')
+      }
+      for (const c of plan.cues ?? []) console.log(`       ♪ ${c.section} [${c.patch}] ${c.action}`)
+      check(
+        'GT-1: o plano usa CTL1, EXP ou ASSIGN',
+        plan.patches.some((p) => (p.controls?.length ?? 0) + (p.assigns?.length ?? 0) > 0)
+      )
+      const harmonist = plan.patches.flatMap((p) => p.blocks).find((b) => b.model === 'HARMONIST')
+      check(
+        'GT-1: o pedido de harmonia virou HARMONIST -3rd',
+        harmonist?.params.find((x) => x.label === 'HARMONY')?.text === '-3rd',
+        harmonist ? `HARMONY ${harmonist.params.find((x) => x.label === 'HARMONY')?.text}` : 'sem HARMONIST'
+      )
+      if (warnings.length) console.log(`       avisos:\n         ${warnings.join('\n         ')}`)
+      // a few slips are what the validator is for; many means the prompt is not landing
+      check('GT-1: quase tudo existe no aparelho', warnings.length <= 4, `${warnings.length} aviso(s)`)
+    }
+    break
+  } catch (err) {
+    console.log(`  AVISO ${name}: patch GT-1 indisponivel -- ${err instanceof Error ? err.message : err}`)
+  }
+  }
 
   console.log(`\n${failures === 0 ? 'TODOS OS TESTES PASSARAM' : `${failures} TESTE(S) FALHARAM`}`)
   process.exit(failures === 0 ? 0 : 1)

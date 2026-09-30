@@ -22,9 +22,18 @@ import type {
   TonePatchView,
   PatchBlock,
   PatchParam,
-  PitchShifterPlan
+  PitchShifterPlan,
+  MediaAssetView,
+  SectionView,
+  ToneResearchView,
+  ControlView,
+  AssignView,
+  CueView
 } from '@shared/types'
+import { findBlock, isGt1, paramText } from '@shared/gt1'
 import { useStrings } from '../../lib/i18n'
+import { ToneMatch } from './ToneMatch'
+import { Gt1Panel } from './Gt1Panel'
 
 /** Object.entries, but keeping the value typed as the string it is. */
 function outputEntries(map: Record<string, string>): Array<[string, string]> {
@@ -35,9 +44,14 @@ import { RIG_DEFAULT } from '@shared/types'
 /* ------------------------------------------------------------------ knobs */
 
 /**
- * A knob drawn the way it sits on the pedal: pointer at 7 o'clock for 0 and
- * 5 o'clock for 100, with the travelled arc filled in. Reading a row of these
- * is much faster than reading "Gain 70, Bass 45, Mid 60" as a sentence.
+ * A knob drawn the way it sits on the pedal: pointer at 7 o'clock for the
+ * minimum and 5 o'clock for the maximum, with the travelled arc filled in.
+ * Reading a row of these is much faster than reading "Gain 70, Bass 45, Mid
+ * 60" as a sentence.
+ *
+ * The range is the device's own when the patch carries it (GAIN 0–120, TONE
+ * −50…+50); a centre-detented control fills from 12 o'clock, the way a TONE
+ * knob at 0 sits on the real editor.
  */
 function Knob({ param }: { param: PatchParam }): ReactNode {
   const size = 46
@@ -57,7 +71,12 @@ function Knob({ param }: { param: PatchParam }): ReactNode {
   }
 
   const hasValue = param.value !== null
-  const angle = start + ((param.value ?? 0) / 100) * sweep
+  const min = param.min ?? 0
+  const max = param.max ?? 100
+  const fraction = Math.max(0, Math.min(1, ((param.value ?? min) - min) / (max - min || 1)))
+  const angle = start + fraction * sweep
+  // a bipolar control fills from its zero, not from the bottom of its travel
+  const origin = min < 0 && max > 0 ? start + ((0 - min) / (max - min)) * sweep : start
   const [px, py] = point(angle, r - 3)
   const [tx, ty] = point(angle, r - 10)
 
@@ -69,7 +88,7 @@ function Knob({ param }: { param: PatchParam }): ReactNode {
   }
 
   return (
-    <div className="flex w-14 flex-col items-center gap-1">
+    <div className="flex w-[60px] flex-col items-center gap-1">
       {hasValue ? (
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
           <path
@@ -79,13 +98,15 @@ function Knob({ param }: { param: PatchParam }): ReactNode {
             strokeWidth={3}
             strokeLinecap="round"
           />
-          <path
-            d={arc(start, angle)}
-            fill="none"
-            stroke="var(--color-accent-2)"
-            strokeWidth={3}
-            strokeLinecap="round"
-          />
+          {Math.abs(angle - origin) > 0.5 && (
+            <path
+              d={arc(Math.min(origin, angle), Math.max(origin, angle))}
+              fill="none"
+              stroke="var(--color-accent-2)"
+              strokeWidth={3}
+              strokeLinecap="round"
+            />
+          )}
           <circle cx={c} cy={c} r={r - 5} fill="var(--color-raised)" stroke="var(--color-edge)" />
           <line
             x1={tx}
@@ -106,10 +127,21 @@ function Knob({ param }: { param: PatchParam }): ReactNode {
           <span className="line-clamp-3">{param.text ?? '—'}</span>
         </div>
       )}
-      <span className="text-txt-micro w-full truncate text-center text-[9px] font-semibold uppercase">
+      <span
+        className={cx(
+          'w-full truncate text-center text-[9px] font-semibold uppercase',
+          param.warning ? 'text-warn' : 'text-txt-micro'
+        )}
+        title={param.warning ?? param.label}
+      >
+        {param.warning ? '⚠ ' : ''}
         {param.label}
       </span>
-      {hasValue && <span className="text-txt-dim text-[10px] tabular-nums">{param.value}</span>}
+      {hasValue && (
+        <span className="text-txt-dim text-[10px] whitespace-nowrap tabular-nums">
+          {paramText(param)}
+        </span>
+      )}
     </div>
   )
 }
@@ -200,7 +232,15 @@ function ChainDiagram({ chain }: { chain: string[] }): ReactNode {
 
 /* ------------------------------------------------------------- pedal card */
 
+/** GT-1 blocks with fixed parameters and no TYPE, named the way the editor names them. */
+const TYPELESS_BLOCKS: Record<string, string> = {
+  NS: 'NOISE SUPPRESSOR',
+  'FOOT VOLUME': 'FOOT VOLUME',
+  MASTER: 'PATCH LEVEL, BPM, KEY e EQ'
+}
+
 function PedalCard({ block }: { block: PatchBlock }): ReactNode {
+  const t = useStrings().tone
   return (
     <div
       className={cx(
@@ -215,12 +255,13 @@ function PedalCard({ block }: { block: PatchBlock }): ReactNode {
             'h-2 w-2 shrink-0 rounded-full',
             block.enabled ? 'bg-ok' : 'bg-txt-micro'
           )}
-          title={block.enabled ? 'ligado' : 'desligado'}
+          title={block.enabled ? 'ligado' : t.blockStandby}
         />
       </div>
       <div className="mb-2.5 truncate text-[13px] font-bold" title={block.model}>
-        {block.model || '—'}
+        {block.model || TYPELESS_BLOCKS[block.slot] || '—'}
       </div>
+      {block.warning && <p className="text-warn -mt-1.5 mb-2 text-[10px] leading-snug">⚠ {block.warning}</p>}
       {block.params.length > 0 && (
         <div className="flex flex-wrap justify-center gap-1.5">
           {block.params.map((p, i) => (
@@ -242,7 +283,8 @@ function PedalCard({ block }: { block: PatchBlock }): ReactNode {
  * physical Drop D at most) and the pitch shifter covers the rest, so a set that
  * jumps between Eb, D and drop tunings needs one guitar.
  */
-function PitchCard({ plan }: { plan: PitchShifterPlan }): ReactNode {
+function PitchCard({ plan, gt1 }: { plan: PitchShifterPlan; gt1: boolean }): ReactNode {
+  const t = useStrings().tone
   return (
     <NeuCard className="p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -259,6 +301,283 @@ function PitchCard({ plan }: { plan: PitchShifterPlan }): ReactNode {
         </Badge>
       </div>
       <p className="text-txt-dim text-[12px] leading-relaxed">{plan.note}</p>
+      {gt1 && plan.enabled && (
+        <p className="text-txt-micro mt-1.5 text-[11px] leading-relaxed">
+          {t.pitchGt1(`${plan.semitones > 0 ? '+' : ''}${plan.semitones}`)}
+        </p>
+      )}
+    </NeuCard>
+  )
+}
+
+/* ------------------------------------------------------------- GT-1 */
+
+/**
+ * The GT-1's nine movable blocks in this patch's order, each with the type it
+ * loads. A block the patch leaves off is dimmed; one that starts off and is
+ * switched on by CTL1 or an ASSIGN is outlined, so the chain shows both what
+ * is sounding and what is waiting.
+ */
+function Gt1Chain({ patch, outputLabel }: { patch: TonePatchView; outputLabel: string }): ReactNode {
+  const t = useStrings().tone
+  const labels = patch.chain.slice(1, -1)
+  // the stored chain ends in English (it is data); the chip shows the interface's word
+  const ends = [patch.chain[0], outputLabel]
+  const chip = (text: string, key: string): ReactNode => (
+    <span key={key} className="neu-inset text-accent-2 rounded-[10px] px-2.5 py-1.5 text-[11px] font-semibold">
+      {text}
+    </span>
+  )
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {chip(ends[0], 'in')}
+      {labels.map((label, i) => {
+        const slot = findBlock(label)?.slot
+        const block = patch.blocks.find((b) => b.slot === slot)
+        const state = !block ? 'off' : block.enabled ? 'on' : 'standby'
+        return (
+          <span key={`${label}-${i}`} className="flex items-center gap-1.5">
+            <span className="text-txt-micro text-[10px]" aria-hidden>
+              →
+            </span>
+            <span
+              className={cx(
+                'flex flex-col rounded-[10px] px-2.5 py-1 leading-tight',
+                state === 'on' && 'neu-raised-sm',
+                state === 'standby' && 'border-accent-2/60 border border-dashed',
+                state === 'off' && 'opacity-40'
+              )}
+              title={
+                state === 'on'
+                  ? t.chainOn(label)
+                  : state === 'standby'
+                    ? t.chainStandby(label)
+                    : t.chainOff(label)
+              }
+            >
+              <span className="text-[11px] font-bold">{label}</span>
+              <span className="text-txt-micro max-w-[110px] truncate text-[9px]">
+                {block?.model || (state === 'off' ? 'off' : '')}
+              </span>
+            </span>
+          </span>
+        )
+      })}
+      <span className="text-txt-micro text-[10px]" aria-hidden>
+        →
+      </span>
+      {chip(ends[1], 'out')}
+    </div>
+  )
+}
+
+const CONTROL_NAMES: Record<string, string> = {
+  CTL1: 'CTL1',
+  'EXP SW': 'EXP SW',
+  EXP1: 'EXP',
+  CTL2: 'CTL2',
+  CTL3: 'CTL3',
+  EXP2: 'EXP2'
+}
+
+/** CTL1, the EXP pedal and its toe switch, then the ASSIGNs that ride on them. */
+function Gt1Controls({ controls, assigns }: { controls: ControlView[]; assigns: AssignView[] }): ReactNode {
+  const t = useStrings().tone
+  if (!controls.length && !assigns.length) return null
+  return (
+    <div className="space-y-3">
+      {controls.length > 0 && (
+        <div>
+          <div className="micro-label mb-2">{t.controlsTitle}</div>
+          <div className="grid gap-2.5 md:grid-cols-3">
+            {controls.map((c) => (
+              <div key={c.source} className="neu-inset flex items-start gap-3 rounded-[16px] p-3">
+                <span
+                  className="neu-raised-sm text-accent-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-[10px] font-bold"
+                  title={c.source}
+                >
+                  {CONTROL_NAMES[c.source] ?? c.source}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold">
+                    {c.func}
+                    {c.mode && <span className="text-txt-micro ml-1.5 text-[10px] font-semibold">{c.mode}</span>}
+                    {c.soloLevel !== null && (
+                      <span className="text-txt-micro ml-1.5 text-[10px] font-semibold">SOLO LEVEL {c.soloLevel}</span>
+                    )}
+                  </div>
+                  {c.action && <p className="text-txt-dim text-[12px] leading-relaxed">{c.action}</p>}
+                  {c.when && <p className="text-txt-micro mt-0.5 text-[11px]">{t.when(c.when)}</p>}
+                  {c.warning && <p className="text-warn mt-1 text-[10px]">⚠ {c.warning}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {assigns.length > 0 && (
+        <div>
+          <div className="micro-label mb-2">{t.assignTitle}</div>
+          <div className="neu-inset overflow-x-auto rounded-[16px] p-2">
+            <table className="w-full min-w-[620px] text-left text-[12px]">
+              <thead className="text-txt-micro text-[10px] uppercase">
+                <tr>
+                  <th className="px-2 py-1.5 font-semibold">#</th>
+                  <th className="px-2 py-1.5 font-semibold">SOURCE</th>
+                  <th className="px-2 py-1.5 font-semibold">MODE</th>
+                  <th className="px-2 py-1.5 font-semibold">TARGET</th>
+                  <th className="px-2 py-1.5 font-semibold">MIN → MAX</th>
+                  <th className="px-2 py-1.5 font-semibold">{t.assignPurpose}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assigns.map((a) => (
+                  <tr key={a.number} className="border-edge border-t align-top">
+                    <td className="text-txt-micro px-2 py-2 tabular-nums">{a.number}</td>
+                    <td className="px-2 py-2 font-semibold whitespace-nowrap">{a.source}</td>
+                    <td className="text-txt-dim px-2 py-2">{a.mode}</td>
+                    <td className="px-2 py-2">
+                      <span className="text-txt-dim">{a.category}</span> ›{' '}
+                      <span className="font-semibold">{a.target}</span>
+                      {a.extra && <div className="text-txt-micro text-[10px]">{a.extra}</div>}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap tabular-nums">
+                      {a.min} → <span className="font-semibold">{a.max}</span>
+                    </td>
+                    <td className="text-txt-dim px-2 py-2">
+                      {a.purpose}
+                      {a.warning && <div className="text-warn mt-0.5 text-[10px]">⚠ {a.warning}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** What to press where, for the whole song — the sheet to read before a gig. */
+function CuesCard({ cues }: { cues: CueView[] }): ReactNode {
+  const t = useStrings().tone
+  return (
+    <NeuCard className="p-4">
+      <div className="micro-label mb-3">{t.cuesTitle}</div>
+      <ol className="space-y-2">
+        {cues.map((c, i) => (
+          <li key={`${c.section}-${i}`} className="flex items-start gap-3">
+            <span className="neu-inset text-accent-2 grid h-6 w-6 shrink-0 place-items-center rounded-[8px] text-[10px] font-bold tabular-nums">
+              {i + 1}
+            </span>
+            <div className="min-w-0 text-[12px] leading-relaxed">
+              <span className="font-semibold">{c.section || '—'}</span>
+              {c.patch && <span className="text-txt-micro"> · {c.patch}</span>}
+              <div className="text-txt-dim">{c.action}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </NeuCard>
+  )
+}
+
+/**
+ * How the record was made, as the web search found it — what the patch is
+ * aiming at. The sources are listed so the player can check a claim instead
+ * of taking the model's word for it.
+ */
+function ResearchCard({
+  research,
+  loading,
+  status,
+  onResearch
+}: {
+  research: ToneResearchView | null
+  loading: boolean
+  status: string | null
+  onResearch: () => void
+}): ReactNode {
+  const r = useStrings().tone.research
+  return (
+    <NeuCard className="p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="micro-label">{r.title}</span>
+        {research && (
+          <Badge tone={research.grounded ? 'ok' : 'warn'}>
+            {research.grounded ? r.sources(research.sources.length) : r.noSources}
+          </Badge>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          {research && (
+            <span className="text-txt-micro text-[10px]">
+              {formatRelative(research.createdAt)}
+              {research.provider ? ` · ${research.provider}` : ''}
+            </span>
+          )}
+          <NeuButton onClick={onResearch} disabled={loading}>
+            <span className="flex items-center gap-2">
+              {loading ? <Spinner size={14} /> : <IconSparkle width={15} height={15} />}
+              {research ? r.again : r.search}
+            </span>
+          </NeuButton>
+        </div>
+      </div>
+      {loading && status && <p className="text-txt-micro mb-2 line-clamp-2 text-[11px] italic">{status}</p>}
+      {research ? (
+        <>
+          <Markdown content={research.content} />
+          {research.sources.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {research.sources.slice(0, 12).map((src) => (
+                <button
+                  key={src.url}
+                  onClick={() => void api.shell.openExternal(src.url)}
+                  className="neu-raised-sm text-txt-dim hover:text-txt max-w-[240px] truncate rounded-[8px] px-2 py-1 text-[11px]"
+                  title={src.url}
+                >
+                  ↗ {src.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-txt-micro text-[11px] leading-relaxed">{r.empty}</p>
+      )}
+    </NeuCard>
+  )
+}
+
+/**
+ * The unit-wide settings a per-song patch depends on. None of them live in a
+ * patch, so no suggestion can set them — but with PREF on SYSTEM the ASSIGNs on
+ * CTL1 and the EXP pedal are ignored, and without LINE/PHONES the cabinet
+ * simulation is off, which would make every patch here sound wrong.
+ */
+function Gt1SetupCard({ output }: { output: RigView['output'] }): ReactNode {
+  const u = useStrings().tone.setup
+  const items: Array<[string, string]> = [
+    ['MENU › OUTPUT SELECT', output === 'amp' ? u.outputAmp : u.outputLine],
+    ['MENU › PREF', u.pref],
+    ['MENU › PLAY › EXP1 HLD', u.hold],
+    ['BOSS TONE STUDIO', u.editor],
+    [u.matchWhere, u.match]
+  ]
+  return (
+    <NeuCard className="p-4">
+      <details>
+        <summary className="micro-label cursor-pointer">{u.title}</summary>
+        <ul className="mt-3 space-y-2">
+          {items.map(([where, what]) => (
+            <li key={where} className="text-[12px] leading-relaxed">
+              <span className="font-semibold">{where}:</span> <span className="text-txt-dim">{what}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
     </NeuCard>
   )
 }
@@ -296,12 +615,16 @@ function CtrlCard({ ctrl }: { ctrl: NonNullable<TonePatchView['ctrl']> }): React
 function PatchCard({
   patch,
   index,
-  total
+  total,
+  gt1
 }: {
   patch: TonePatchView
   index: number
   total: number
+  /** Checked against the GT-1 catalogue: draw its chain, controllers and ASSIGNs. */
+  gt1: boolean
 }): ReactNode {
+  const str = useStrings()
   return (
     <NeuCard className="space-y-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -324,8 +647,12 @@ function PatchCard({
       )}
 
       <div className="neu-inset rounded-[16px] px-3 py-2">
-        <div className="micro-label mb-1">Cadeia de sinal</div>
-        <ChainDiagram chain={patch.chain} />
+        <div className="micro-label mb-1.5">Cadeia de sinal</div>
+        {gt1 ? (
+          <Gt1Chain patch={patch} outputLabel={str.labels.output[patch.rig.output] ?? patch.chain[patch.chain.length - 1]} />
+        ) : (
+          <ChainDiagram chain={patch.chain} />
+        )}
       </div>
 
       {patch.blocks.length > 0 && (
@@ -340,6 +667,7 @@ function PatchCard({
       )}
 
       {patch.ctrl && <CtrlCard ctrl={patch.ctrl} />}
+      {gt1 && <Gt1Controls controls={patch.controls ?? []} assigns={patch.assigns ?? []} />}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {patch.listenFor && (
@@ -351,7 +679,7 @@ function PatchCard({
         {patch.notes && (
           <div className="neu-inset rounded-[16px] p-3">
             <div className="micro-label mb-1.5">Observações</div>
-            <p className="text-txt-dim text-[12px] leading-relaxed">{patch.notes}</p>
+            <p className="text-txt-dim text-[12px] leading-relaxed whitespace-pre-line">{patch.notes}</p>
           </div>
         )}
       </div>
@@ -361,13 +689,27 @@ function PatchCard({
 
 /* ----------------------------------------------------------------- tab */
 
-export function ToneTab({ song }: { song: SongView }): ReactNode {
+export function ToneTab({
+  song,
+  media,
+  sections
+}: {
+  song: SongView
+  media: MediaAssetView[]
+  sections: SectionView[]
+}): ReactNode {
   const str = useStrings()
   const { toast, show, clear } = useToast()
   const [rig, setRig] = useState<RigView>(RIG_DEFAULT)
   const [plan, setPlan] = useState<TonePlanView | null>(null)
   const [loading, setLoading] = useState(false)
   const [savingRig, setSavingRig] = useState(false)
+  /** How the record was made, from the web; what the patch aims at. */
+  const [research, setResearch] = useState<ToneResearchView | null>(null)
+  const [researchLoading, setResearchLoading] = useState(false)
+  /** The player's request for this song; starts from what the stored plan was asked with. */
+  const [wishes, setWishes] = useState('')
+  const gt1 = isGt1(rig.processor)
   /**
    * The prose second opinion, kept as an optional extra to the patch.
    *
@@ -387,14 +729,17 @@ export function ToneTab({ song }: { song: SongView }): ReactNode {
      * `Promise.all` would take the rig and the patch down with it. A song with
      * no stored explanation is the normal case, so an absent one is `null`.
      */
-    const [savedRig, savedPlan, savedAdvice] = await Promise.all([
+    const [savedRig, savedPlan, savedAdvice, savedResearch] = await Promise.all([
       api.gear.rig(),
       api.gear.patch(song.id),
-      (async () => api.insights.get(song.id, 'tone_advice'))().catch(() => null)
+      (async () => api.insights.get(song.id, 'tone_advice'))().catch(() => null),
+      (async () => api.gear.research(song.id))().catch(() => null)
     ])
     setRig(savedRig)
     setPlan(savedPlan)
+    setWishes(savedPlan?.wishes ?? '')
     setAdvice(savedAdvice)
+    setResearch(savedResearch)
   }, [song.id])
 
   useEffect(() => {
@@ -418,7 +763,7 @@ export function ToneTab({ song }: { song: SongView }): ReactNode {
     try {
       // save first, so the AI always sees what is on screen
       await api.gear.setRig(rig)
-      const res = await api.llm.tonePatch(song.id)
+      const res = await api.llm.tonePatch(song.id, wishes)
       if (isError(res)) show(res.error, 'danger')
       else {
         setPlan(res)
@@ -428,11 +773,35 @@ export function ToneTab({ song }: { song: SongView }): ReactNode {
             : 'Patch pronto',
           'ok'
         )
+        // the patch may have run the research first; show what it was based on
+        if (res.researchUsed && !research) {
+          const stored = await api.gear.research(song.id).catch(() => null)
+          if (stored) setResearch(stored)
+        }
       }
     } catch (err) {
       show(err instanceof Error ? err.message : 'Falha ao consultar a IA', 'danger')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const askResearch = async (): Promise<void> => {
+    setResearchLoading(true)
+    try {
+      const res = await api.llm.toneResearch(song.id)
+      if (isError(res)) show(res.error, 'danger')
+      else {
+        setResearch(res)
+        show(
+          res.grounded ? str.tone.research.ready(res.sources.length) : str.tone.research.ungrounded,
+          res.grounded ? 'ok' : 'warn'
+        )
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : 'Falha ao consultar a IA', 'danger')
+    } finally {
+      setResearchLoading(false)
     }
   }
 
@@ -491,13 +860,24 @@ export function ToneTab({ song }: { song: SongView }): ReactNode {
           </NeuButton>
         </div>
         <p className="text-txt-micro mt-3 text-[11px]">
-          A sugestão é escrita para som direto — a IA já compensa o brilho e a falta de gabinete
-          real que a {str.labels.output[rig.output].toLowerCase()} expõe.
+          {gt1
+            ? str.tone.rigNoteGt1
+            : `A sugestão é escrita para som direto — a IA já compensa o brilho e a falta de gabinete real que a ${str.labels.output[rig.output].toLowerCase()} expõe.`}
         </p>
       </NeuCard>
 
+      {gt1 && <Gt1SetupCard output={rig.output} />}
+
+      {/* what the patch is aiming at: the record's own gear */}
+      <ResearchCard
+        research={research}
+        loading={researchLoading}
+        status={researchLoading ? aiStatus : null}
+        onResearch={askResearch}
+      />
+
       {/* what to do about the tuning, before any knob is touched */}
-      {plan?.pitchShifter && <PitchCard plan={plan.pitchShifter} />}
+      {plan?.pitchShifter && <PitchCard plan={plan.pitchShifter} gt1={plan.device === 'gt1'} />}
 
       {/* the patches themselves */}
       <NeuCard className="p-4">
@@ -513,6 +893,17 @@ export function ToneTab({ song }: { song: SongView }): ReactNode {
               {plan ? 'Gerar de novo' : 'Sugerir patch'}
             </span>
           </NeuButton>
+        </div>
+
+        <div className="mt-3">
+          <NeuInput
+            label={str.tone.wishes}
+            value={wishes}
+            maxLength={1200}
+            placeholder={str.tone.wishesPlaceholder}
+            onChange={(e) => setWishes(e.target.value)}
+          />
+          <p className="text-txt-micro mt-1.5 text-[10px]">{str.tone.wishesHint}</p>
         </div>
 
         {loading && aiStatus && (
@@ -534,8 +925,17 @@ export function ToneTab({ song }: { song: SongView }): ReactNode {
           patch={patch}
           index={i}
           total={plan.patches.length}
+          gt1={plan.device === 'gt1'}
         />
       ))}
+
+      {plan?.cues && plan.cues.length > 0 && <CuesCard cues={plan.cues} />}
+
+      {/* from the suggestion to the pedal: .tsl export, or straight over USB */}
+      {plan?.device === 'gt1' && plan.patches.length > 0 && <Gt1Panel plan={plan} songTitle={song.title} />}
+
+      {/* the measurement: record stem against what comes out of the unit */}
+      <ToneMatch key={song.id} songId={song.id} media={media} sections={sections} durationMs={song.durationMs} />
 
       {/* prose fallback for the nuances a patch diagram cannot carry */}
       <NeuCard className="p-4">
