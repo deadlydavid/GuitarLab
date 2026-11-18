@@ -146,9 +146,9 @@ function registerMediaProtocol(): void {
     // /opt/GuitarLab/_stems/... must not turn into opt/GuitarLab/_stems/...
     // Windows drive paths need the slash before C: removed instead.
     const pathname = decodeURIComponent(url.pathname)
-    const decoded = process.platform === 'win32'
-      ? pathname.replace(/^\\/+/, '')
-      : '/' + pathname.replace(/^\\/+/, '')
+    const decoded = process.platform === 'win32' && pathname.startsWith('/')
+      ? pathname.slice(1)
+      : pathname
     if (!allowedRoot(decoded)) {
       return new Response('Fora das pastas permitidas', { status: 403 })
     }
