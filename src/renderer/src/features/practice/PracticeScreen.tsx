@@ -430,7 +430,7 @@ export function PracticeScreen({
                         variant="accent"
                         onClick={() => go({ name: 'lab', songId: song.id })}
                       >
-                        Abrir Laboratório
+                        {str.practiceExtra.openLab}
                       </NeuButton>
                     ) : undefined
                   }
@@ -444,7 +444,7 @@ export function PracticeScreen({
                 description={str.practiceExtra.studyVideosHint}
                 action={
                   <NeuButton onClick={() => go({ name: 'song', songId: song.id })}>
-                    Abrir a música
+                    {str.practiceExtra.openSong}
                   </NeuButton>
                 }
               />
@@ -474,7 +474,7 @@ export function PracticeScreen({
                     activeSection === null ? 'neu-glow gradient-text' : 'neu-press text-txt-dim'
                   )}
                 >
-                  tudo
+                  {str.practiceExtra.all}
                 </button>
                 {sections.map((s) => (
                   <button
@@ -583,7 +583,7 @@ export function PracticeScreen({
                     className="neu-press text-txt-dim hover:text-txt shrink-0 rounded-[11px] px-2.5 py-1 text-[10px] font-semibold disabled:opacity-50"
                     title={str.practiceExtra.refreshTips}
                   >
-                    Buscar de novo
+                    {str.practiceExtra.searchAgain}
                   </button>
                 </div>
               </>
