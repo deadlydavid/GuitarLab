@@ -306,6 +306,39 @@ export const ptBR = {
    * rest is what a file would have carried, and can be filled in when it shows
    * up.
    */
+  setlistExtra: {
+    lastPractice: "Último treino",
+    tuning: "Afinação",
+    key: "Tom",
+    tempo: "Andamento",
+    openSong: "Abrir música",
+    practice: "Estudar",
+    chordsLyrics: "Cifra & letra",
+    lab: "Laboratório",
+    queueHint: "Entra no topo da fila de hoje, na tela de Progresso",
+    inQueue: "Na fila de estudos",
+    addToQueue: "Add à fila de estudos",
+    sortBy: "ordenar",
+    showOrderHint: "A ordem do show, do jeito que você arrastou",
+    tuningChange: "troca de afinação",
+    hasTab: "Já tem tablatura — clique para buscar outra versão",
+    findTab: "Buscar tablatura Guitar Pro (Ultimate Guitar / CifraClub)",
+    hasAudio: "Já tem áudio — clique para baixar outra versão",
+    getAudio: "Baixar a faixa em wav/mp3 do archive.org",
+    removeFromSetlist: "Tirar do setlist",
+    created: "criadas",
+    matched: "casadas",
+    skipped: "já existiam",
+    errors: "erros"
+  },
+
+  practicePicker: {
+    choose: "Escolha o que estudar",
+    noSongs: "Nenhuma música importada",
+    noSongsDescription: "Volte ao Setlist e importe as pastas gptabs/ e songs/.",
+    goToSetlist: "Ir para o Setlist"
+  },
+
   manual: {
     newSetlist: 'Novo setlist',
     renameSetlist: 'Editar o setlist',
