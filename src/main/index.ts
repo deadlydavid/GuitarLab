@@ -150,6 +150,17 @@ function registerMediaProtocol(): void {
       ? normalize(pathname.slice(1))
       : normalize(pathname)
     if (!allowedRoot(decoded)) {
+      console.warn('[media] denied by allowedRoot', {
+        url: request.url,
+        pathname: url.pathname,
+        decoded,
+        roots: {
+          songs: config.paths.songs,
+          stems: config.paths.stems,
+          gptabs: config.paths.gptabs,
+          waveforms: config.paths.waveforms
+        }
+      })
       return new Response('Fora das pastas permitidas', { status: 403 })
     }
     if (!existsSync(decoded)) {
