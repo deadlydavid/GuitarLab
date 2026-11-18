@@ -76,7 +76,7 @@ function SongPicker(): ReactNode {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   {s.hasGuitarPro && <Badge tone="accent">GP</Badge>}
-                  {s.hasAudio && <Badge tone="info">áudio</Badge>}
+                  {s.hasAudio && <Badge tone="info">{str.practiceExtra.audio}</Badge>}
                 </div>
               </div>
             </NeuCard>
@@ -325,8 +325,8 @@ export function PracticeScreen({
   if (!song) {
     return (
       <EmptyState
-        title="Música não encontrada"
-        action={<NeuButton onClick={() => go({ name: 'setlist' })}>Voltar</NeuButton>}
+        title={str.practiceExtra.notFound}
+        action={<NeuButton onClick={() => go({ name: 'setlist' })}>{str.practiceExtra.back}</NeuButton>}
       />
     )
   }
@@ -407,8 +407,8 @@ export function PracticeScreen({
               ) : (
                 <EmptyState
                   icon={<IconPractice width={26} height={26} />}
-                  title="Sem arquivo Guitar Pro"
-                  description="Essa música não tem tablatura importada. Coloque um .gp/.gp3/.gp4/.gp5/.gtp na pasta gptabs/ e importe de novo."
+                  title={str.practiceExtra.noGuitarPro}
+                  description={str.practiceExtra.noGuitarProDesc}
                 />
               ))}
 
@@ -418,11 +418,11 @@ export function PracticeScreen({
               ) : (
                 <EmptyState
                   icon={<IconWave width={26} height={26} />}
-                  title="Sem stems separados"
+                  title={str.practiceExtra.noStems}
                   description={
                     song.hasAudio
-                      ? 'Essa música tem áudio local. Abra o Laboratório e rode a separação de stems para gerar guitarra isolada e backing track.'
-                      : 'Importe o arquivo de áudio dessa música em songs/ para poder separar os stems.'
+                      ? str.practiceExtra.hasAudioHint
+                      : str.practiceExtra.needAudioHint
                   }
                   action={
                     song.hasAudio ? (
@@ -440,8 +440,8 @@ export function PracticeScreen({
             {source === 'youtube' && (
               <EmptyState
                 icon={<IconYoutube width={26} height={26} />}
-                title="Vídeos de estudo"
-                description="Busque as três versões (Lesson w/ Tabs, Backing Track, Guitar Only) na tela da música."
+                title={str.practiceExtra.studyVideos}
+                description={str.practiceExtra.studyVideosHint}
                 action={
                   <NeuButton onClick={() => go({ name: 'song', songId: song.id })}>
                     Abrir a música
@@ -465,7 +465,7 @@ export function PracticeScreen({
         <aside className="hidden w-64 shrink-0 flex-col gap-3 lg:flex">
           {sections.length > 0 && (
             <NeuCard className="shrink-0 p-3.5">
-              <div className="micro-label mb-2.5">Trechos</div>
+              <div className="micro-label mb-2.5">{str.practiceExtra.sections}</div>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   onClick={() => applySection(null)}
@@ -480,7 +480,7 @@ export function PracticeScreen({
                   <button
                     key={s.id}
                     onClick={() => applySection(s.id)}
-                    title={`compassos ${(s.startBar ?? 0) + 1}–${(s.endBar ?? 0) + 1}`}
+                    title={`${str.practiceExtra.bars} ${(s.startBar ?? 0) + 1}–${(s.endBar ?? 0) + 1}`}
                     className={cx(
                       'rounded-full px-2.5 py-1 text-[11px] font-semibold',
                       activeSection === s.id ? 'neu-glow gradient-text' : 'neu-press text-txt-dim'
@@ -495,7 +495,7 @@ export function PracticeScreen({
 
           {tracks.length > 0 && source === 'gp_synth' && (
             <NeuCard className="shrink-0 p-3.5">
-              <div className="micro-label mb-2.5">Trilhas</div>
+              <div className="micro-label mb-2.5">{str.practiceExtra.tracks}</div>
               {/*
                 Capped and scrolling rather than as tall as the arrangement: a
                 five-guitar score would otherwise push the tips card below it
@@ -516,7 +516,7 @@ export function PracticeScreen({
                             ? 'text-txt-dim'
                             : 'text-txt-micro'
                       )}
-                      title={`${t.name} · ${t.instrument ?? 'sem instrumento'} — clique para mostrar/ocultar na partitura`}
+                      title={`${t.name} · ${t.instrument ?? str.practiceExtra.noInstrument} — ${str.practiceExtra.showHideTrack}`}
                     >
                       {visibleTracks.includes(t.index) ? '● ' : '○ '}
                       {t.name}
@@ -527,7 +527,7 @@ export function PracticeScreen({
                         'rounded-md px-1.5 py-0.5 text-[10px] font-bold',
                         t.muted ? 'bg-danger/20 text-danger' : 'neu-press text-txt-micro'
                       )}
-                      title="Silenciar"
+                      title={str.practiceExtra.mute}
                     >
                       M
                     </button>
@@ -545,9 +545,7 @@ export function PracticeScreen({
                   ))}
               </div>
               <p className="text-txt-micro mt-2.5 text-[10px] leading-snug">
-                Clique no nome para mostrar a trilha na partitura. <b>M</b> silencia e <b>S</b> deixa
-                em solo no áudio — silencie a guitarra e toque por cima: é o seu backing track
-                direto da tablatura.
+                {str.practiceExtra.trackTip}
               </p>
             </NeuCard>
           )}
@@ -556,7 +554,7 @@ export function PracticeScreen({
             <div className="flex shrink-0 items-center gap-2">
               <IconSparkle width={15} height={15} className="text-accent-2 shrink-0" />
               <span className="gradient-text flex-1 text-xs font-semibold">
-                Dicas para esta música
+                {str.practiceExtra.tips}
               </span>
               {insightLoading && <Spinner size={14} />}
             </div>
@@ -583,7 +581,7 @@ export function PracticeScreen({
                     onClick={askInsight}
                     disabled={insightLoading}
                     className="neu-press text-txt-dim hover:text-txt shrink-0 rounded-[11px] px-2.5 py-1 text-[10px] font-semibold disabled:opacity-50"
-                    title="Consulta a IA de novo e substitui as dicas salvas"
+                    title={str.practiceExtra.refreshTips}
                   >
                     Buscar de novo
                   </button>
@@ -592,9 +590,7 @@ export function PracticeScreen({
             ) : (
               <div className="mt-3 flex min-h-0 flex-1 flex-col justify-between gap-3">
                 <p className="text-txt-micro text-[11px] leading-snug">
-                  Uma explicação parte por parte: o que cada trecho exige, a dificuldade de 1 a 5
-                  estrelas e um exercício com BPM para cada um. Fica salvo depois da primeira
-                  busca.
+                  {str.practiceExtra.tipsDesc}
                 </p>
                 <NeuButton
                   variant="accent"
@@ -602,7 +598,7 @@ export function PracticeScreen({
                   disabled={insightLoading}
                   className="shrink-0 !py-2 !text-[11px]"
                 >
-                  {insightLoading ? 'Consultando…' : 'Buscar dicas'}
+                  {insightLoading ? str.practiceExtra.gettingTips : str.practiceExtra.getTips}
                 </NeuButton>
               </div>
             )}
@@ -624,7 +620,7 @@ export function PracticeScreen({
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <IconButton
-              title={playing ? 'Pausar' : 'Tocar'}
+              title={playing ? str.practiceExtra.pause : str.practiceExtra.play}
               size={48}
               active={playing}
               onClick={() => (playing ? tabRef.current?.pause() : tabRef.current?.play())}
@@ -654,7 +650,7 @@ export function PracticeScreen({
               <IconLoop width={16} height={16} />
             </IconButton>
             <IconButton
-              title="Metrônomo"
+              title={str.practiceExtra.metronome}
               size={40}
               active={metronome}
               disabled={!gpTransport}
