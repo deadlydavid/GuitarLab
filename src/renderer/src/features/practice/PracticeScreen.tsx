@@ -41,6 +41,7 @@ type Source = 'gp_synth' | 'stems' | 'youtube'
 const SPEEDS = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25]
 
 function SongPicker(): ReactNode {
+  const str = useStrings()
   const go = useNav((s) => s.go)
   const [songs, setSongs] = useState<SongView[]>([])
   useEffect(() => {
@@ -49,13 +50,13 @@ function SongPicker(): ReactNode {
 
   return (
     <div className="scroll-area h-full px-6 py-4">
-      <h2 className="mb-4 text-lg font-bold">Escolha o que estudar</h2>
+      <h2 className="mb-4 text-lg font-bold">{str.practicePicker.choose}</h2>
       {songs.length === 0 ? (
         <EmptyState
           icon={<IconPractice width={26} height={26} />}
-          title="Nenhuma música importada"
-          description="Volte ao Setlist e importe as pastas gptabs/ e songs/."
-          action={<NeuButton onClick={() => go({ name: 'setlist' })}>Ir para o Setlist</NeuButton>}
+          title={str.practicePicker.noSongs}
+          description={str.practicePicker.noSongsDescription}
+          action={<NeuButton onClick={() => go({ name: 'setlist' })}>{str.practicePicker.goToSetlist}</NeuButton>}
         />
       ) : (
         <div className="grid gap-2.5 sm:grid-cols-2">
