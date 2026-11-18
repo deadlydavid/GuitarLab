@@ -290,7 +290,7 @@ export const es: Catalog = {
     showOrderHint: "El orden del concierto que organizaste arrastrando",
     tuningChange: "Cambio de afinación",
     hasTab: "Ya tiene tablatura — pulsa para buscar otra versión",
-    findTab: "Buscar tablatura Guitar Pro (Ultimate Guitar / CifraClub)",
+    findTab: "Buscar partituras Guitar Pro (Ultimate Guitar / CifraClub)",,
     hasAudio: "Ya tiene audio — pulsa para descargar otra versión",
     getAudio: "Descargar la pista en WAV/MP3 desde archive.org",
     removeFromSetlist: "Quitar del setlist",
@@ -308,9 +308,9 @@ export const es: Catalog = {
   },
 
   extra: {
-    importing: "Importando…",
+    importing: "Importando archivos…",
     importFolders: "Importar carpetas",
-    importPlaylist: "Importar playlist",
+    importPlaylist: "Cargar lista de reproducción",
     practiceToday: "Qué practicar hoy",
     audio: "Audio",
     emptySetlist: "Setlist vacío",
@@ -322,7 +322,7 @@ export const es: Catalog = {
     dragToReorder: "Arrastra para reordenar",
     sortedHint: "Ordenado — vuelve a «orden» para arrastrar",
     fromSetlist: "Del setlist",
-    all: "Todas",
+    all: "Todas las canciones",
     close: "Cerrar"
   },
 
@@ -345,16 +345,16 @@ export const es: Catalog = {
     tracks: "Pistas",
     noInstrument: "sin instrumento",
     showHideTrack: "haz clic para mostrar/ocultar en la partitura",
-    mute: "Silenciar",
+    mute: "Silenciar pista",
     trackTip: "Haz clic en una pista para mostrarla en la partitura. M la silencia y S la deja sola en el audio: silencia la guitarra y toca con la pista de acompañamiento.",
     tips: "Consejos para esta canción",
     refreshTips: "Volver a consultar a la IA y reemplazar los consejos guardados",
     searchAgain: "Buscar de nuevo",
     tipsDesc: "Un análisis sección por sección de lo que exige, dificultad (1–5 estrellas) y un ejercicio con BPM para cada sección. Se guarda tras la primera búsqueda.",
-    gettingTips: "Consultando…",
+    gettingTips: "Preguntando a la IA…",
     getTips: "Pedir consejos",
     play: "Reproducir",
-    pause: "Pausar",
+    pause: "Poner en pausa",
     metronome: "Metrónomo"
   },
 
