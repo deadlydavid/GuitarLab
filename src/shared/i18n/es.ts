@@ -290,7 +290,7 @@ export const es: Catalog = {
     showOrderHint: "El orden del concierto que organizaste arrastrando",
     tuningChange: "Cambio de afinación",
     hasTab: "Ya tiene tablatura — pulsa para buscar otra versión",
-    findTab: "Buscar partituras Guitar Pro (Ultimate Guitar / CifraClub)",,
+    findTab: "Buscar partituras Guitar Pro (Ultimate Guitar / CifraClub)",
     hasAudio: "Ya tiene audio — pulsa para descargar otra versión",
     getAudio: "Descargar la pista en WAV/MP3 desde archive.org",
     removeFromSetlist: "Quitar del setlist",
