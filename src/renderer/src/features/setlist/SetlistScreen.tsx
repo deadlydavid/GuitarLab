@@ -152,7 +152,7 @@ function SongDetail({ song }: { song: SongView }): ReactNode {
           variant="accent"
           onClick={() => go({ name: 'song', songId: song.id, tab: 'estudar' })}
         >
-          Estudar
+          {str.setlistExtra.practice}
         </NeuButton>
         <NeuButton onClick={() => go({ name: 'song', songId: song.id, tab: 'cifra' })}>
           {str.setlistExtra.chordsLyrics}
@@ -664,7 +664,7 @@ export function SetlistScreen(): ReactNode {
           <NeuButton onClick={() => setShowImport(true)}>
             <span className="flex items-center gap-2">
               <IconSpotify width={16} height={16} />
-              Importar playlist
+              {str.extra.importPlaylist}
             </span>
           </NeuButton>
           <NeuButton onClick={() => go({ name: 'progress' })}>
@@ -683,7 +683,7 @@ export function SetlistScreen(): ReactNode {
             className="text-txt-micro hover:text-txt text-xs"
             onClick={() => setImportResult(null)}
           >
-            fechar
+            {str.extra.close}
           </button>
         </NeuCard>
       )}
@@ -703,7 +703,7 @@ export function SetlistScreen(): ReactNode {
               <div className="flex flex-wrap justify-center gap-2">
                 {allSongs.length === 0 ? (
                   <NeuButton variant="accent" onClick={runImport} disabled={importing}>
-                    Importar agora
+                    {str.extra.importNow}
                   </NeuButton>
                 ) : (
                   <NeuButton onClick={() => setView('todas')}>{str.extra.viewAll}</NeuButton>
