@@ -638,8 +638,8 @@ export function SetlistScreen(): ReactNode {
           value={view}
           onChange={setView}
           options={[
-            { value: 'setlist', label: 'Do setlist' },
-            { value: 'todas', label: `Todas (${allSongs.length})` }
+            { value: 'setlist', label: str.extra.fromSetlist },
+            { value: 'todas', label: `${str.extra.all} (${allSongs.length})` }
           ]}
         />
         <div className="flex flex-wrap gap-2">
@@ -658,7 +658,7 @@ export function SetlistScreen(): ReactNode {
           <NeuButton onClick={runImport} disabled={importing}>
             <span className="flex items-center gap-2">
               {importing ? <Spinner size={15} /> : <IconImport width={16} height={16} />}
-              {importing ? 'Importando…' : 'Importar pastas'}
+              {importing ? str.extra.importing : str.extra.importFolders}
             </span>
           </NeuButton>
           <NeuButton onClick={() => setShowImport(true)}>
@@ -669,7 +669,7 @@ export function SetlistScreen(): ReactNode {
           </NeuButton>
           <NeuButton onClick={() => go({ name: 'progress' })}>
             <span className="flex items-center gap-2">
-              <IconClock width={16} height={16} />O que treinar hoje
+              <IconClock width={16} height={16} />{str.extra.practiceToday}
             </span>
           </NeuButton>
         </div>
@@ -678,7 +678,7 @@ export function SetlistScreen(): ReactNode {
       {importResult && (
         <NeuCard className="mb-5 space-y-3 p-4">
           <ImportSummary report={importResult.guitarPro} label="Guitar Pro" />
-          <ImportSummary report={importResult.audio} label="Áudio" />
+          <ImportSummary report={importResult.audio} label={str.extra.audio} />
           <button
             className="text-txt-micro hover:text-txt text-xs"
             onClick={() => setImportResult(null)}
@@ -693,11 +693,11 @@ export function SetlistScreen(): ReactNode {
         items.length === 0 ? (
           <EmptyState
             icon={<IconSetlist width={26} height={26} />}
-            title="Setlist vazio"
+            title={str.extra.emptySetlist}
             description={
               allSongs.length === 0
-                ? 'Importe suas pastas gptabs/ e songs/ para começar. Os arquivos Guitar Pro trazem afinação, andamento e seções automaticamente.'
-                : 'Você tem músicas na biblioteca. Troque para "Todas" e adicione ao setlist.'
+                ? str.extra.emptyStart
+                : str.extra.emptyLibrary
             }
             action={
               <div className="flex flex-wrap justify-center gap-2">
@@ -706,7 +706,7 @@ export function SetlistScreen(): ReactNode {
                     Importar agora
                   </NeuButton>
                 ) : (
-                  <NeuButton onClick={() => setView('todas')}>Ver todas as músicas</NeuButton>
+                  <NeuButton onClick={() => setView('todas')}>{str.extra.viewAll}</NeuButton>
                 )}
                 <NeuButton onClick={() => setShowNewSong(true)}>{str.manual.newSong}</NeuButton>
               </div>
@@ -715,13 +715,13 @@ export function SetlistScreen(): ReactNode {
         ) : (
           <div className="space-y-2.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-              <div className="micro-label">Músicas do show</div>
+              <div className="micro-label">{str.extra.showSongs}</div>
               <div className="flex flex-wrap items-center gap-2">
                 <SortBar value={sortKey} dir={sortDir} onChange={applySort} />
                 <span className="text-txt-micro text-[10px]">
                   {draggable
-                    ? 'arraste para reordenar'
-                    : 'ordenado — volte para "ordem" para arrastar'}
+                    ? str.extra.dragToReorder
+                    : str.extra.sortedHint}
                 </span>
               </div>
             </div>
