@@ -274,6 +274,39 @@ export const es: Catalog = {
     chooseFolders: 'Elegir carpetas'
   },
 
+  setlistExtra: {
+    lastPractice: "Última práctica",
+    tuning: "Afinación",
+    key: "Tonalidad",
+    tempo: "Tempo",
+    openSong: "Abrir canción",
+    practice: "Practicar",
+    chordsLyrics: "Acordes y letra",
+    lab: "Laboratorio de audio",
+    queueHint: "Añadir al principio de la cola de práctica de hoy en Progreso",
+    inQueue: "En la cola de práctica",
+    addToQueue: "Añadir a la cola de práctica",
+    sortBy: "Ordenar por",
+    showOrderHint: "El orden del concierto que organizaste arrastrando",
+    tuningChange: "Cambio de afinación",
+    hasTab: "Ya tiene tablatura — pulsa para buscar otra versión",
+    findTab: "Buscar tablatura Guitar Pro (Ultimate Guitar / CifraClub)",
+    hasAudio: "Ya tiene audio — pulsa para descargar otra versión",
+    getAudio: "Descargar la pista en WAV/MP3 desde archive.org",
+    removeFromSetlist: "Quitar del setlist",
+    created: "creadas",
+    matched: "vinculadas",
+    skipped: "ya existentes",
+    errors: "errores"
+  },
+
+  practicePicker: {
+    choose: "Elige qué practicar",
+    noSongs: "No hay canciones importadas",
+    noSongsDescription: "Vuelve a Setlist e importa las carpetas gptabs/ y songs/.",
+    goToSetlist: "Ir a Setlist"
+  },
+
   manual: {
     newSetlist: 'Nuevo setlist',
     renameSetlist: 'Editar el setlist',
