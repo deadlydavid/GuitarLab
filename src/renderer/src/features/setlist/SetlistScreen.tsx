@@ -101,6 +101,7 @@ function SourceChip({
 
 /** Expanded row detail, mirroring the Departure/Return card in the reference. */
 function SongDetail({ song }: { song: SongView }): ReactNode {
+  const str = useStrings()
   const go = useNav((s) => s.go)
   const [queued, setQueued] = useState<boolean | null>(null)
 
@@ -118,15 +119,15 @@ function SongDetail({ song }: { song: SongView }): ReactNode {
     <div className="neu-inset mx-3.5 mb-3.5 rounded-[18px] p-4">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div>
-          <div className="micro-label mb-1">Último treino</div>
+          <div className="micro-label mb-1">{str.setlistExtra.lastPractice}</div>
           <div className="text-sm font-semibold">{formatRelative(song.lastPracticedAt)}</div>
         </div>
         <div>
-          <div className="micro-label mb-1">Afinação</div>
+          <div className="micro-label mb-1">{str.setlistExtra.tuning}</div>
           <div className="text-sm font-semibold">{song.tuning?.name ?? '—'}</div>
         </div>
         <div>
-          <div className="micro-label mb-1">Tom</div>
+          <div className="micro-label mb-1">{str.setlistExtra.key}</div>
           <div className="text-sm font-semibold">
             {song.musicalKey ?? '—'}
             {song.keySource && (
@@ -135,7 +136,7 @@ function SongDetail({ song }: { song: SongView }): ReactNode {
           </div>
         </div>
         <div>
-          <div className="micro-label mb-1">Andamento</div>
+          <div className="micro-label mb-1">{str.setlistExtra.tempo}</div>
           <div className="text-sm font-semibold">
             {song.bpm ? `${Math.round(song.bpm)} BPM` : '—'}
             {song.bpmSource && (
@@ -146,29 +147,29 @@ function SongDetail({ song }: { song: SongView }): ReactNode {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <NeuButton onClick={() => go({ name: 'song', songId: song.id })}>Abrir música</NeuButton>
+        <NeuButton onClick={() => go({ name: 'song', songId: song.id })}>{str.setlistExtra.openSong}</NeuButton>
         <NeuButton
           variant="accent"
           onClick={() => go({ name: 'song', songId: song.id, tab: 'estudar' })}
         >
-          Estudar
+          {str.setlistExtra.practice}
         </NeuButton>
         <NeuButton onClick={() => go({ name: 'song', songId: song.id, tab: 'cifra' })}>
-          Cifra & letra
+          {str.setlistExtra.chordsLyrics}
         </NeuButton>
         {song.hasAudio && (
           <NeuButton onClick={() => go({ name: 'song', songId: song.id, tab: 'lab' })}>
-            Laboratório
+            {str.setlistExtra.lab}
           </NeuButton>
         )}
         <NeuButton
           variant={queued ? 'accent' : 'default'}
           onClick={toggleQueue}
-          title="Entra no topo da fila de hoje, na tela de Progresso"
+          title={str.setlistExtra.queueHint}
         >
           <span className="flex items-center gap-2">
             <IconClock width={14} height={14} />
-            {queued ? 'Na fila de estudos' : 'Add à fila de estudos'}
+            {queued ? str.setlistExtra.inQueue : str.setlistExtra.addToQueue}
           </span>
         </NeuButton>
       </div>
@@ -195,7 +196,7 @@ function SortBar({
   const str = useStrings()
   return (
     <div className="neu-inset flex flex-wrap items-center gap-1 rounded-[16px] p-1">
-      <span className="micro-label px-1.5">ordenar</span>
+      <span className="micro-label px-1.5">{str.setlistExtra.sortBy}</span>
       {SORT_KEYS.map((key) => {
         const active = key === value
         return (
@@ -204,7 +205,7 @@ function SortBar({
             onClick={() => onChange(key, active && key !== 'ordem' ? flip(dir) : 'asc')}
             title={
               key === 'ordem'
-                ? 'A ordem do show, do jeito que você arrastou'
+                ? str.setlistExtra.showOrderHint
                 : `${str.labels.sort[key]}: ${str.labels.sortDir[key][active ? dir : 'asc']}`
             }
             className={cx(
@@ -255,6 +256,7 @@ function SongRow({
     onDragEnd: () => void
   }
 }): ReactNode {
+  const str = useStrings()
   const song = item.song
   // A tuning change between consecutive songs means a guitar swap mid-set.
   const tuningChange =
@@ -281,7 +283,7 @@ function SongRow({
       {tuningChange && (
         <div className="text-warn mb-1.5 flex items-center gap-2 px-4 text-[11px] font-semibold">
           <span className="bg-warn/40 h-px flex-1" />
-          troca de afinação: {previousTuning} → {song.tuning?.name}
+          {str.setlistExtra.tuningChange}: {previousTuning} → {song.tuning?.name}
           <span className="bg-warn/40 h-px flex-1" />
         </div>
       )}
@@ -313,8 +315,8 @@ function SongRow({
                 label="GP"
                 title={
                   song.hasGuitarPro
-                    ? 'Já tem tablatura — clique para buscar outra versão'
-                    : 'Buscar tablatura Guitar Pro (Ultimate Guitar / CifraClub)'
+                    ? str.setlistExtra.hasTab
+                    : str.setlistExtra.findTab
                 }
                 has={song.hasGuitarPro}
                 icon={<IconDownload width={12} height={12} />}
@@ -324,8 +326,8 @@ function SongRow({
                 label="WAV"
                 title={
                   song.hasAudio
-                    ? 'Já tem áudio — clique para baixar outra versão'
-                    : 'Baixar a faixa em wav/mp3 do archive.org'
+                    ? str.setlistExtra.hasAudio
+                    : str.setlistExtra.getAudio
                 }
                 has={song.hasAudio}
                 icon={<IconWave width={12} height={12} />}
@@ -344,7 +346,7 @@ function SongRow({
                 onRemove()
               }}
               className="neu-press gradient-text hover:text-danger grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-lg font-bold leading-none"
-              title="Tirar do setlist"
+              title={str.setlistExtra.removeFromSetlist}
             >
               −
             </button>
@@ -358,10 +360,11 @@ function SongRow({
 }
 
 function ImportSummary({ report, label }: { report: ImportReport; label: string }): ReactNode {
+  const str = useStrings()
   return (
     <div className="text-xs">
       <div className="mb-1 font-semibold">
-        {label}: {report.created} criadas · {report.matched} casadas · {report.skipped} já existiam
+        {label}: {report.created} {str.setlistExtra.created} · {report.matched} {str.setlistExtra.matched} · {report.skipped} {str.setlistExtra.skipped}
         {report.errors.length > 0 && ` · ${report.errors.length} erros`}
       </div>
       <ul className="text-txt-dim space-y-0.5">
@@ -635,8 +638,8 @@ export function SetlistScreen(): ReactNode {
           value={view}
           onChange={setView}
           options={[
-            { value: 'setlist', label: 'Do setlist' },
-            { value: 'todas', label: `Todas (${allSongs.length})` }
+            { value: 'setlist', label: str.extra.fromSetlist },
+            { value: 'todas', label: `${str.extra.all} (${allSongs.length})` }
           ]}
         />
         <div className="flex flex-wrap gap-2">
@@ -655,18 +658,18 @@ export function SetlistScreen(): ReactNode {
           <NeuButton onClick={runImport} disabled={importing}>
             <span className="flex items-center gap-2">
               {importing ? <Spinner size={15} /> : <IconImport width={16} height={16} />}
-              {importing ? 'Importando…' : 'Importar pastas'}
+              {importing ? str.extra.importing : str.extra.importFolders}
             </span>
           </NeuButton>
           <NeuButton onClick={() => setShowImport(true)}>
             <span className="flex items-center gap-2">
               <IconSpotify width={16} height={16} />
-              Importar playlist
+              {str.extra.importPlaylist}
             </span>
           </NeuButton>
           <NeuButton onClick={() => go({ name: 'progress' })}>
             <span className="flex items-center gap-2">
-              <IconClock width={16} height={16} />O que treinar hoje
+              <IconClock width={16} height={16} />{str.extra.practiceToday}
             </span>
           </NeuButton>
         </div>
@@ -675,12 +678,12 @@ export function SetlistScreen(): ReactNode {
       {importResult && (
         <NeuCard className="mb-5 space-y-3 p-4">
           <ImportSummary report={importResult.guitarPro} label="Guitar Pro" />
-          <ImportSummary report={importResult.audio} label="Áudio" />
+          <ImportSummary report={importResult.audio} label={str.extra.audio} />
           <button
             className="text-txt-micro hover:text-txt text-xs"
             onClick={() => setImportResult(null)}
           >
-            fechar
+            {str.extra.close}
           </button>
         </NeuCard>
       )}
@@ -690,20 +693,20 @@ export function SetlistScreen(): ReactNode {
         items.length === 0 ? (
           <EmptyState
             icon={<IconSetlist width={26} height={26} />}
-            title="Setlist vazio"
+            title={str.extra.emptySetlist}
             description={
               allSongs.length === 0
-                ? 'Importe suas pastas gptabs/ e songs/ para começar. Os arquivos Guitar Pro trazem afinação, andamento e seções automaticamente.'
-                : 'Você tem músicas na biblioteca. Troque para "Todas" e adicione ao setlist.'
+                ? str.extra.emptyStart
+                : str.extra.emptyLibrary
             }
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 {allSongs.length === 0 ? (
                   <NeuButton variant="accent" onClick={runImport} disabled={importing}>
-                    Importar agora
+                    {str.extra.importNow}
                   </NeuButton>
                 ) : (
-                  <NeuButton onClick={() => setView('todas')}>Ver todas as músicas</NeuButton>
+                  <NeuButton onClick={() => setView('todas')}>{str.extra.viewAll}</NeuButton>
                 )}
                 <NeuButton onClick={() => setShowNewSong(true)}>{str.manual.newSong}</NeuButton>
               </div>
@@ -712,13 +715,13 @@ export function SetlistScreen(): ReactNode {
         ) : (
           <div className="space-y-2.5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-              <div className="micro-label">Músicas do show</div>
+              <div className="micro-label">{str.extra.showSongs}</div>
               <div className="flex flex-wrap items-center gap-2">
                 <SortBar value={sortKey} dir={sortDir} onChange={applySort} />
                 <span className="text-txt-micro text-[10px]">
                   {draggable
-                    ? 'arraste para reordenar'
-                    : 'ordenado — volte para "ordem" para arrastar'}
+                    ? str.extra.dragToReorder
+                    : str.extra.sortedHint}
                 </span>
               </div>
             </div>

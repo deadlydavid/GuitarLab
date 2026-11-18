@@ -142,7 +142,13 @@ function registerMediaProtocol(): void {
     // media://local/F%3A/path/to/file.flac — see `mediaUrl` in the preload for
     // why the host is there and why each segment is encoded separately
     const url = new URL(request.url)
-    const decoded = decodeURIComponent(url.pathname).replace(/^\/+/, '')
+    // URL creation can produce //opt/... for an absolute POSIX path.
+    // Normalize duplicate separators while preserving the leading /.
+    // On Windows, remove the URL slash preceding the drive letter.
+    const pathname = decodeURIComponent(url.pathname)
+    const decoded = process.platform === 'win32' && pathname.startsWith('/')
+      ? normalize(pathname.slice(1))
+      : normalize(pathname)
     if (!allowedRoot(decoded)) {
       return new Response('Fora das pastas permitidas', { status: 403 })
     }

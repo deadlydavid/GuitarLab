@@ -5,7 +5,7 @@ import { AiActivityBar } from './components/AiActivityBar'
 import { SetupBanner } from './components/SetupBanner'
 import { UpdateBanner } from './components/UpdateBanner'
 import { connectAiActivity } from './lib/aiActivity'
-import { useLocaleStore } from './lib/i18n'
+import { useLocaleStore, useStrings } from './lib/i18n'
 import {
   IconSetlist,
   IconPractice,
@@ -74,27 +74,28 @@ export const useNav = create<NavState>((set, get) => ({
   }
 }))
 
-const NAV_ITEMS: Array<{ name: Route['name']; icon: typeof IconSetlist; title: string }> = [
-  { name: 'setlist', icon: IconSetlist, title: 'Setlist' },
-  { name: 'practice', icon: IconPractice, title: 'Estudar' },
-  { name: 'lab', icon: IconLab, title: 'Laboratório' },
-  { name: 'progress', icon: IconProgress, title: 'Progresso' },
+const NAV_ITEMS: Array<{ name: Route['name']; icon: typeof IconSetlist; title: keyof ReturnType<typeof useStrings>['nav'] }> = [
+  { name: 'setlist', icon: IconSetlist, title: 'setlist' },
+  { name: 'practice', icon: IconPractice, title: 'practice' },
+  { name: 'lab', icon: IconLab, title: 'lab' },
+  { name: 'progress', icon: IconProgress, title: 'progress' },
   /*
    * Stage mode belongs in the bottom bar and not only in the title bar: it is
    * the one screen reached in a hurry, with a guitar in hand, from across a
    * room. The 52px targets down here are the ones you can hit like that.
    */
-  { name: 'stage', icon: IconStage, title: 'Modo Palco' }
+  { name: 'stage', icon: IconStage, title: 'stage' }
 ]
 
 function TitleBar({ onBack, canBack }: { onBack: () => void; canBack: boolean }): ReactNode {
   const go = useNav((s) => s.go)
+  const str = useStrings()
   return (
     /* the right-hand icons sit exactly where the OS draws the window buttons */
     <header className="drag-region window-controls-room flex h-11 shrink-0 items-center justify-between px-4">
       <div className="no-drag flex items-center gap-2">
         {canBack && (
-          <IconButton size={32} title="Voltar" onClick={onBack}>
+          <IconButton size={32} title={str.common.back} onClick={onBack}>
             <IconArrowLeft width={16} height={16} />
           </IconButton>
         )}
@@ -109,13 +110,13 @@ function TitleBar({ onBack, canBack }: { onBack: () => void; canBack: boolean })
         <span className="micro-label">GuitarLab</span>
       </div>
       <div className="no-drag flex items-center gap-2">
-        <IconButton size={32} title="Afinador" onClick={() => go({ name: 'tuner' })}>
+        <IconButton size={32} title={str.nav.tuner} onClick={() => go({ name: 'tuner' })}>
           <IconTuner width={16} height={16} />
         </IconButton>
-        <IconButton size={32} title="Modo Palco" onClick={() => go({ name: 'stage' })}>
+        <IconButton size={32} title={str.nav.stage} onClick={() => go({ name: 'stage' })}>
           <IconStage width={16} height={16} />
         </IconButton>
-        <IconButton size={32} title="Ajustes" onClick={() => go({ name: 'settings' })}>
+        <IconButton size={32} title={str.nav.settings} onClick={() => go({ name: 'settings' })}>
           <IconGrid width={16} height={16} />
         </IconButton>
       </div>
@@ -125,6 +126,7 @@ function TitleBar({ onBack, canBack }: { onBack: () => void; canBack: boolean })
 
 function BottomNav(): ReactNode {
   const { route, go } = useNav()
+  const str = useStrings()
   return (
     <nav className="flex shrink-0 items-center justify-center gap-3 py-3">
       {NAV_ITEMS.map((item) => {
@@ -134,7 +136,7 @@ function BottomNav(): ReactNode {
           <IconButton
             key={item.name}
             active={active}
-            title={item.title}
+            title={str.nav[item.title]}
             size={52}
             // practice and lab show their own picker when no song is set
             onClick={() => go({ name: item.name } as Route)}
@@ -145,7 +147,7 @@ function BottomNav(): ReactNode {
       })}
       <IconButton
         active={route.name === 'settings'}
-        title="Ajustes"
+        title={str.nav.settings}
         size={52}
         onClick={() => go({ name: 'settings' })}
       >
